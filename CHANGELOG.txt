@@ -1,0 +1,7 @@
+Version 0.1
+-------------
+
+    - First prototype. Supports:
+      * Inputs: linear models, trees, random forest and gradient boosting (partial)
+      * Outputs: string, python, excel, sqlalchemy, sympy
+

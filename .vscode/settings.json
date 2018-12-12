@@ -1,0 +1,21 @@
+{
+    "files.exclude": {
+        "**/.git": true,         // this is a default value
+        "**/.DS_Store": true,    // this is a default value
+        "build": true,
+        "dist": true,
+        "*.egg-info": true,
+        "venv": true,
+        "**/__pycache__": true,
+        "Untitled.ipynb": true,
+        ".ipynb_checkpoints": true,
+        ".pytest_cache": true
+    },
+    "python.pythonPath": "${workspaceFolder}\\venv\\Scripts\\python.exe",
+    "python.unitTest.pyTestEnabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintUseMinimalCheckers": false,
+    "python.linting.pylintPath": "${workspaceFolder}\\venv\\Scripts\\pylint.exe",
+    // https://github.com/Microsoft/vscode-python/issues/435
+}
