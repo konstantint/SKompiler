@@ -1,12 +1,12 @@
 """
 SKompiler: Generate Sympy expressions from SKAST.
 """
-#pylint: disable=wildcard-import,unused-wildcard-import
 from functools import reduce
 import warnings
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ASTProcessor, IndexedIdentifier, NumberConstant
+from ..ast import ASTProcessor
+from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_
 
 def translate(node, dialect=None, assign_to='y', component=None):
     """Translates SKAST to an SQLAlchemy expression (or a list of those, if the output should be a vector).
@@ -29,10 +29,6 @@ def translate(node, dialect=None, assign_to='y', component=None):
         return saexprs
     else:
         return to_sql(saexprs, dialect, assign_to=assign_to)
-
-
-def _is(val):
-    return lambda self, node: val
 
 def _sum(iterable):
     "The built-in 'sum' does not work for us as we need."
@@ -65,16 +61,8 @@ def _argmax(xs):
                     for i, x in enumerate(xs[:-1])],
                    else_=len(xs)-1)
 
-def _sigmoid(x):
-    return 1.0/(1.0 + sa.func.exp(-x))
 
-def _tolist(x):
-    if hasattr(x, 'tolist'):
-        return x.tolist()
-    else:
-        return list(x)
-    
-class SQLAlchemyWriter(ASTProcessor):
+class SQLAlchemyWriter(ASTProcessor, StandardArithmetics, VectorsAsLists, LazyLet):
     """A SK AST processor, producing a SQLAlchemy expression (or a list of those)"""
     def __init__(self, positive_infinity=float(np.finfo('float64').max), negative_infinity=float(np.finfo('float64').min)):
         self.positive_infinity = positive_infinity
@@ -82,9 +70,6 @@ class SQLAlchemyWriter(ASTProcessor):
     
     def Identifier(self, id):
         return sa.Column(id.id)
-
-    def VectorIdentifier(self, id):
-        return [self(IndexedIdentifier(id.id, i, id.size)) for i in range(id.size)]
 
     def IndexedIdentifier(self, sub):
         warnings.warn("SQL does not support vector types natively. "
@@ -99,73 +84,16 @@ class SQLAlchemyWriter(ASTProcessor):
         else:
             return num.value
 
-    def VectorConstant(self, vec):
-        return [self(NumberConstant(v)) for v in _tolist(vec.value)]
-
-    def MatrixConstant(self, mtx):
-        return [[self(NumberConstant(v)) for v in _tolist(row)] for row in mtx.value]
-
-    def MakeVector(self, vec):
-        return [self(el) for el in vec.elems]
-
-    def UnaryFunc(self, op):
-        return self(op.op)(self(op.arg))
-
-    def ElemwiseUnaryFunc(self, op):
-        arg = self(op.arg)
-        if not isinstance(arg, list):
-            raise ValueError("Elementwise operations are only supported for vectors")
-        return list(map(self(op.op), arg))
-
-    def BinOp(self, op):
-        return self(op.op)(self(op.left), self(op.right))
-    CompareBinOp = BinOp
-
-    def ElemwiseBinOp(self, op):
-        left = self(op.left)
-        right = self(op.right)
-        op = self(op.op)
-        if not isinstance(left, list) or not isinstance(right, list):
-            raise ValueError("Elementwise operations are only supported for vectors")
-        if len(left) != len(right):
-            raise ValueError("Sizes of the arguments do not match")
-        return [op(l, r) for l, r in zip(left, right)]
-
-    def IfThenElse(self, node):
-        tst, iftrue, iffalse = self(node.test), self(node.iftrue), self(node.iffalse)
-        if isinstance(iftrue, list):
-            if not isinstance(iffalse, list) or len(iftrue) != len(iffalse):
-                raise ValueError("Mixed types in IfThenElse expressions are not supported")
-            return [sa.case([(tst, ift)], else_=iff) for ift, iff in zip(iftrue, iffalse)]
-        else:
-            if isinstance(iffalse, list):
-                raise ValueError("Mixed types in IfThenElse expressions are not supported")
-            return sa.case([(tst, iftrue)], else_=iffalse)
-    
-    Mul = _is(lambda x, y: x * y)
-    Div = _is(lambda x, y: x / y)
-    Add = _is(lambda x, y: x + y)
-    LtEq = _is(lambda x, y: x <= y)
-    MatVecProduct = _is(_matvecproduct)
-    Sub = _is(lambda x, y: x - y)
-    USub = _is(lambda x: -x)
-    DotProduct = _is(_dotproduct)
-    Exp = _is(sa.func.exp)
-    Log = _is(sa.func.log)
-    Step = _is(_step)
-    VecSum = _is(_sum)
-    Sigmoid = _is(_sigmoid)
-    VecSumNormalize = _is(_vecsumnormalize)
-    SKLearnSoftmax = _is(_sklearn_softmax)
-    ArgMax = _is(_argmax)
-
-    def Let(self, let):
-        # In principle we may consider compiling Let expressions into a series of separate statements, which
-        # may be used in a sequence of "with" statements.
-        raise NotImplementedError("Let expressions are not implemented. Use substitute_variables instead.")
-
-    Reference = Definition = None
-
+    _iif = lambda self, test, ift, iff: _iif(test, ift, iff)
+    MatVecProduct = is_(_matvecproduct)
+    DotProduct = is_(_dotproduct)
+    Exp = is_(sa.func.exp)
+    Log = is_(sa.func.log)
+    Step = is_(_step)
+    VecSum = is_(_sum)
+    VecSumNormalize = is_(_vecsumnormalize)
+    SKLearnSoftmax = is_(_sklearn_softmax)
+    ArgMax = is_(_argmax)
 
 
 # ------- SQLAlchemy "greatest" function
@@ -193,6 +121,7 @@ def case_greatest(element, compiler, **kw):
 
 # Utilities ----------------------------------
 import sqlalchemy.dialects
+#pylint: disable=wildcard-import,unused-wildcard-import
 from sqlalchemy.dialects import *   # Must do it in order to getattr(sqlalchemy.dialects, ...)
 def to_sql(sa_exprs, dialect_name='sqlite', assign_to='y'):
     """

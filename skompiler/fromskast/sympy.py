@@ -1,10 +1,10 @@
 """
 SKompiler: Generate Sympy expressions from SKAST.
 """
-#pylint: disable=wildcard-import,unused-wildcard-import,unnecessary-lambda
 import sympy as sp
 from sklearn.utils.extmath import softmax
-from ..ast import ASTProcessor
+from ..ast import ASTProcessor, Mul
+from ._common import is_, StandardArithmetics, LazyLet
 
 def translate(node, dialect=None, true_argmax=True, assign_to='y', component=None, lambdify_inputs_str='x', **kw):
     """Translates SKAST to a Sympy expression and optionally generates code from it.
@@ -65,9 +65,6 @@ def translate(node, dialect=None, true_argmax=True, assign_to='y', component=Non
     else:
         return to_code(syexpr, dialect, assign_to=assign_to, **kw)
 
-def _is(val):
-    return lambda self, node: val
-
 def _argmax(val):
     "A sympy implementation of argmax"
 
@@ -81,7 +78,7 @@ def _sklearn_softmax(vec):
     smax = [sp.exp(vec[i] - sp.Max(*vec)) for i in range(len(vec))]
     return sp.ImmutableMatrix([smax[i] / sum(smax) for i in range(len(smax))])
 
-class SympyWriter(ASTProcessor):
+class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
     """A SK AST processor, producing a Sympy expression"""
 
     def __init__(self, true_argmax=False):
@@ -122,19 +119,12 @@ class SympyWriter(ASTProcessor):
     def MakeVector(self, vec):
         return sp.ImmutableMatrix([self(el) for el in vec.elems])
 
-    def UnaryFunc(self, op):
-        return self(op.op)(self(op.arg))
-
     def ElemwiseUnaryFunc(self, op):
         arg = self(op.arg)
         op = self(op.op)
         if arg.shape[1] != 1:
             raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
         return sp.ImmutableMatrix([op(arg[i]) for i in range(len(arg))])
-
-    def BinOp(self, op):
-        return self(op.op)(self(op.left), self(op.right))
-    CompareBinOp = BinOp
 
     def ElemwiseBinOp(self, op):
         left = self(op.left)
@@ -145,7 +135,7 @@ class SympyWriter(ASTProcessor):
         if left.shape[1] != 1:
             raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
         return sp.ImmutableMatrix([op(left[i], right[i]) for i in range(len(left))])
-
+    
     def IfThenElse(self, node):
         # Piecewise function with matrix output is not a Matrix itself, which breaks some of the logic
         # Hence this won't work in general:
@@ -158,38 +148,19 @@ class SympyWriter(ASTProcessor):
             return sp.ImmutableMatrix([sp.Piecewise((ift, test), (iff, True)) for ift, iff in zip(iftrue, iffalse)])
         else:
             return sp.Piecewise((iftrue, test), (iffalse, True))
+
+    def MatVecProduct(self, _):
+        return self(Mul())
     
-    def Let(self, let, definitions=None):
-        if definitions is None:
-            definitions = {}
-        for defn in let.defs:
-            definitions[defn.name] = self(defn.body, definitions=definitions)
-        return self(let.body, definitions=definitions)
+    DotProduct = is_(lambda x, y: x.dot(y))
+    Exp = is_(sp.exp)
+    Log = is_(sp.log)
+    Step = is_(sp.Heaviside)
+    VecSum = is_(sum) # Yes, we return a Python summation here
+    VecSumNormalize = is_(lambda xs: xs/sum(xs))
+    SKLearnSoftmax = is_(_sklearn_softmax)
 
-    def Reference(self, ref, definitions=None):
-        if not definitions or ref.name not in definitions:
-            raise ValueError("Undefined reference: " + ref.name)
-        else:
-            return definitions[ref.name]
-
-    Definition = None
-    Mul = _is(lambda x, y: x * y)
-    MatVecProduct = Mul
-    Div = _is(lambda x, y: x / y)
-    Add = _is(lambda x, y: x + y)
-    Sub = _is(lambda x, y: x - y)
-    USub = _is(lambda x: -x)
-    DotProduct = _is(lambda x, y: x.dot(y))
-    Exp = _is(sp.exp)
-    Log = _is(sp.log)
-    Step = _is(sp.Heaviside)
-    VecSum = _is(sum) # Yes, we return a Python summation here
-    Sigmoid = _is(lambda x: 1/(1 + sp.exp(-x)))
-    VecSumNormalize = _is(lambda xs: xs/sum(xs))
-    SKLearnSoftmax = _is(_sklearn_softmax)
-    LtEq = _is(lambda x, y: x <= y)
-
-    def ArgMax(self, node):  #pylint: disable=unused-argument
+    def ArgMax(self, _):
         return _argmax if self.true_argmax else sp.Function('argmax')
 
 # Utility function
@@ -204,6 +175,8 @@ def lambdify(sympy_inputs_str, sympy_expr):
 
 
 _ufns = {'argmax': 'argmax'}
+
+#pylint: disable=unnecessary-lambda
 _code_printers = {
     'c': lambda expr, **kw: sp.ccode(expr, standard='c99', user_functions=_ufns, **kw),
     'cxx': lambda expr, **kw: sp.cxxcode(expr, user_functions=_ufns, **kw),

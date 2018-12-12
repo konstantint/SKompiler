@@ -79,6 +79,3 @@ def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict
     else:
         raise ValueError("Invalid method: " + method)
     
-       
-
-       

@@ -17,8 +17,11 @@ _evaluators = {
     'sqlite': SQLiteEval(X)
 }
 
-def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False):
-    true_Y = getattr(model, method)(X)
+def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, data_preprocessing=None):
+    X_inputs = X
+    if data_preprocessing:
+        X_inputs = data_preprocessing(X_inputs)
+    true_Y = getattr(model, method)(X_inputs)
     if binary_fix and len(true_Y.shape) > 1 and true_Y.shape[1] > 1:
         true_Y = true_Y[:, 1]
     pred_Y = _evaluators[evaluator](expr)

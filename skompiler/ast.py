@@ -20,8 +20,7 @@ Notes:
 $z = (12.2 + (x * y[-5]))
 ($z + 2)
 """
-#pylint: disable=protected-access,multiple-statements,too-few-public-methods
-#pylint: disable=redefined-builtin,no-member
+#pylint: disable=protected-access,multiple-statements,too-few-public-methods,no-member
 
 # Each ASTNode registers its class name in this set
 AST_NODES = set([])
@@ -52,7 +51,7 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
                 raise Exception("Argument %s defined multiple times" % k)
         args.update(kw)
         if len(args) != len(self._fields):
-            raise Exception("Not enough arguments")
+            raise Exception("Not enough arguments ({0}) given to {1}".format(len(args), self.__class__.__name__))
         for k in self._fields:
             if k not in args:
                 raise Exception("Argument %s not provided" % k)
@@ -72,7 +71,7 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
     def __iter__(self):
         for k in self._fields:
             yield k, getattr(self, k)
-    
+
     def lambdify(self):
         """
         Converts the SKAST expression to an executable Python function.
@@ -112,7 +111,7 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
             
                - 'sqlalchemy',
                - 'sqlalchemy/<dialect>', where <dialect> is on of the supported
-                 SQLAlchemy dialects ('firebird', 'mssql', 'mysql', 'oracle', 
+                 SQLAlchemy dialects ('firebird', 'mssql', 'mysql', 'oracle',
                  'postgresql', 'sqlite', 'sybase')
                - 'sympy'
                - 'sympy/<lang>', where <lang> is either of:
@@ -150,7 +149,7 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
 # Unary operators and functions
 class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'): pass
 class USub(ASTNode, repr='-'): pass     # Unary minus operator
-#class Exp(ASTNode, repr='exp'): pass
+class Exp(ASTNode, repr='exp'): pass
 class Log(ASTNode, repr='log'): pass
 class Step(ASTNode, repr='step'): pass  # Heaviside step (x >= 0)
 
@@ -209,56 +208,84 @@ class Reference(ASTNode, fields='name', repr='${name}'): pass
 
 
 # --------------------- Utility functions -----------------------
+def map_list(node_list, fn):
+    new_list = []
+    changed = False
+    for node in node_list:
+        new_node = fn(node)
+        if new_node is not node:
+            changed = True
+        new_list.append(new_node)
+    return new_list if changed else node_list
 
-def walk_tree(node, visitor_fn, parent=None, parent_field_name=None, preorder=True):
-    """
-    Walks through the AST, invoking visitor_fn(node, parent, parent_field_name) for each AST node.
 
-    >>> expr = Definition('y', BinOp(Add(), Identifier('x'), NumberConstant(2)))
-    >>> walk_tree(expr, print)
-    $y = (x + 2) None None
-    (x + 2) $y = (x + 2) body
-    + (x + 2) op
-    x (x + 2) left
-    2 (x + 2) right
+def map_tree(node, fn, preorder=False):
+    """Applies a function to each node in the tree.
+
+    Args:
+        fn: function, which must accept a node and return a node.
+    
+    Kwargs:
+        preorder:  When True, first invokes the function, then descends into the leaves
+                  (of a potentially different node). In other words, processes substitutions.
+                   When False, first descends, then calls the function.
     """
-    if preorder:
-        visitor_fn(node, parent, parent_field_name)
+    if preorder: node = fn(node)
+
+    updates = {}
     for fname, fval in node:
         if isinstance(fval, ASTNode):
-            walk_tree(fval, visitor_fn, node, fname)
-    if not preorder:
-        visitor_fn(node, parent, parent_field_name)
+            new_val = map_tree(fval, fn)
+        elif fname in ['elems', 'defs']:  # Special case for MakeVector and Let nodes
+            new_val = map_list(fval, fn)
+        else:
+            new_val = fval
+        if new_val is not fval:
+            updates[fname] = new_val
+    node = replace(node, **updates)
     
+    if not preorder: node = fn(node)
 
+    return node
 
-def _substitute_refs(expr, definitions):
-    """Walks through a given expression body and replaces all Reference nodes
-       with the corresponding values from definitions in-place.
+def substitute_references(node, definitions):
+    """Substitutes all references in the given expression with ones from the `definitions` dictionary.
+       If any substitutions were made, returns a new node. Otherwise returns the same node.
+
+       If references with no matches are found, raises a ValueError.
 
     Args:
        definitions (dict): a dictionary (name -> expr)
-    
-    >>> defs = {'x': NumberConstant(2), 'y': BinOp(Add(), Identifier('x'), Reference('z'))}
-    >>> expr = BinOp(Mul(), BinOp(Add(), Reference('x'), Reference('y')), Reference('x'))
-    >>> expr = _substitute_refs(expr, defs)
-    >>> print(expr)
-    ((2 + (x + $z)) * 2)
+
+    >>> expr = BinOp(Add(), Identifier('x'), NumberConstant(2))
+    >>> substitute_references(expr, {}) is expr
+    True
+    >>> expr.left = Reference('x')
+    >>> substitute_references(expr, {})
+    Traceback (most recent call last):
+    ...
+    ValueError: Unknown variable reference: x
+    >>> new_expr = substitute_references(expr, {'x': expr})
+    >>> print(new_expr)  # Only one level of references is expanded
+    (($x + 2) + 2)
+    >>> assert new_expr is not expr
+    >>> assert new_expr.right is expr.right
     """
-    def substitute_ref(node, parent, parent_field_name):
+    def fn(node):
         if isinstance(node, Reference):
             if node.name not in definitions:
                 raise ValueError("Unknown variable reference: " + node.name)
             else:
-                setattr(parent, parent_field_name, definitions[node.name])
+                return definitions[node.name]
+        else:
+            return node
 
-    wrapper = UnaryFunc(arg=expr, op=None)  # Hackish way to handle the case when expr is a reference itself
-    walk_tree(wrapper, substitute_ref)
-    return wrapper.arg
+    return map_tree(node, fn, preorder=False)
+
 
 def inline_definitions(let_expr):
     """Given a Let expression, substitutes all the definitions and returns a single
-       evaluatable expression.
+       evaluatable non-let expression.
 
     >>> from .toskast.string import translate as skast
     >>> expr = inline_definitions(skast('a=1; a'))
@@ -272,17 +299,51 @@ def inline_definitions(let_expr):
     ...
     ValueError: Let expression expected
     """
-
     if not isinstance(let_expr, Let):
         raise ValueError("Let expression expected")
     
     defs = {}
     for defn in let_expr.defs:
-        defs[defn.name] = _substitute_refs(defn.body, defs)
+        defs[defn.name] = substitute_references(defn.body, defs)
     
-    return _substitute_refs(let_expr.body, defs)
+    return substitute_references(let_expr.body, defs)
 
 
+# ---------- Helper functions for working with AST nodes
+# We don't implement them as methods to avoid potential conflicts with
+# field names ("lambdify", "evaluate" and "to" are the only exceptions as they might be used more often)
+
+def copy(node):
+    """
+    Copies the node.
+
+    >>> o = BinOp('+', 2, 3)
+    >>> o2 = copy(o)
+    >>> o.op = '-'
+    >>> print(o, o2)
+    (2 - 3) (2 + 3)
+    """
+    return node.__class__(**dict(node))
+
+def replace(node, **kw):
+    """Equivalent to namedtuple's _replace.
+    When **kw is empty simply returns node itself.
+    
+    >>> o = BinOp('+', 2, 3)
+    >>> o2 = replace(o, op='-', left=3)
+    >>> print(o, o2)
+    (2 + 3) (3 - 3)
+    """
+    if kw:
+        new_node = copy(node)
+        for k, v in kw.items():
+            setattr(new_node, k, v)
+        return new_node
+    else:
+        return node
+
+
+# ------------- Helper base class for defining AST processor classes
 class ASTProcessorMeta(type):
     """A metaclass, which checks that the class defines methods for all known AST nodes.
        This is useful to verify SKAST processor implementations for completeness."""
@@ -290,6 +351,9 @@ class ASTProcessorMeta(type):
         if name != 'ASTProcessor':
             # This way the verification applies to all subclasses of ASTProcessor
             unimplemented = AST_NODES.difference(dct.keys())
+            # Maybe the methods are implemented in one of the base classes?
+            for base_cls in bases:
+                unimplemented.difference_update(dir(base_cls))
             if unimplemented:
                 raise ValueError(("Class {0} does not implement all the required ASTParser methods. "
                                   "Unimplemented methods: {1}").format(name, ', '.join(unimplemented)))

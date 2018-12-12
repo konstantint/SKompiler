@@ -115,3 +115,4 @@ class PythonASTProcessor:
     Sub = _is(Sub())
     USub = _is(USub())
     LtE = _is(LtEq())
+    Div = _is(Div())

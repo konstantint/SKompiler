@@ -10,6 +10,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.svm import SVR, SVC
 from sklearn.datasets import load_iris
+from skompiler.ast import BinOp, Mul, NumberConstant, IndexedIdentifier
 from skompiler.toskast.sklearn import _supported_methods
 from skompiler import skompile
 from .verification import verify_one
@@ -45,6 +46,8 @@ _models = make_models()
 _targets = ['sqlalchemy', 'python', 'excel', 'string', 'sqlalchemy/sqlite', 'python/code']
 
 def test_skompile():
+    transformed_features = [BinOp(Mul(), IndexedIdentifier('x', i, 4), NumberConstant(2)) for i in range(4)]
+
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', RuntimeWarning)  # Ignore divide by zero warning for log(0)
         for name, model in _models.items():
@@ -55,6 +58,12 @@ def test_skompile():
                            binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'))
                 for target in _targets:
                     expr.to(target)
+
+                # Check that everything will work if we provide expressions instead of raw features
+                expr = skompile(getattr(model, method), transformed_features)
+                verify_one(model, method, 'python', expr,
+                           binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'),
+                           data_preprocessing=lambda X: X*2)
 
 def test_sympy_skompile():
     """We run sympy in a separate test, because it takes longer than other generations"""
