@@ -99,7 +99,46 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
 
     def to(self, target, *args, **kw):
         """Convenience routine for converting expressions to any
-           supported output form"""
+           supported output form.
+           See project documentation for detailed explanation.
+
+           Equivalent to skompiler.fromskast.<dialect[0]>.translate(self, dialect[1], *args, **kw)
+           (where dialect[0] and dialect[1] denote the parts to the left and right of the '/' in the
+            dialect parameter)
+
+         Args:
+         
+            target (str): The target value. Possible values are:
+            
+               - 'sqlalchemy',
+               - 'sqlalchemy/<dialect>', where <dialect> is on of the supported
+                 SQLAlchemy dialects ('firebird', 'mssql', 'mysql', 'oracle', 
+                 'postgresql', 'sqlite', 'sybase')
+               - 'sympy'
+               - 'sympy/<lang>', where <lang> is either of:
+                 'c', 'cxx', 'rust', 'fortran', 'js', 'r', 'julia',
+                 'mathematica', 'octave'
+               - 'excel'
+               - 'python'
+               - 'python/code'
+               - 'python/lambda'
+               - 'string'
+            
+        Kwargs:
+
+            *args, **kw: Extra arguments are passed to the translation function.
+                         
+                The most important for `sqlalchemy` and `sympy/<lang>` dialects are:
+                
+                   assign_to:  When not None, the generated code outputs the result to a variable
+                          (or variables, or columns) with given name(s).
+                   component:  When not None and the expression produces a vector, only the
+                            specified component of the vector is output (0-indexed)
+                            
+                For more info, see documentation for
+                    skompiler.fromskast.<dialect[0]>.translate.
+
+        '"""
         module, *dialect = target.split('/')
         try:
             from importlib import import_module

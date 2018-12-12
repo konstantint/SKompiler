@@ -11,11 +11,11 @@ The simplest way to install the package is via `pip`:
     $ pip install SKompiler[full]
 
 
-Note that the `[full]` option includes the installations of `sympy`, `sqlalchemy` and `astor`, which are necessary if you plan to convert `SKompiler`'s expressions to `sympy` expressions (which, in turn, can be compiled to many other languages) or to SQLAlchemy expressions (which can be further translated to different SQL dialects) or to Python source code. If you do not need this functionality (say, you only need the raw `SKompiler` expressions or the conversions implemented in `SKompiler` code without relying on `sympy`, such as SQL or Excel), you may avoid the forced installation of optional dependencies by simply writing
+Note that the `[full]` option includes the installations of `sympy`, `sqlalchemy` and `astor`, which are necessary if you plan to convert `SKompiler`'s expressions to `sympy` expressions (which, in turn, can be compiled to many other languages) or to SQLAlchemy expressions (which can be further translated to different SQL dialects) or to Python source code. If you do not need this functionality (say, you only need the raw `SKompiler` expressions or perhaps only the SQL conversions without the `sympy` ones), you may avoid the forced installation of all optional dependencies by simply writing
 
     $ pip install SKompiler
 
-(you are free to install some of the required extra dependencies, of course)
+(you are free to install any of the required extra dependencies, via separate calls to `pip install`, of course)
 
 Usage
 -----
@@ -29,7 +29,7 @@ Let us start by walking through a simple example. We begin by training a model o
     X, y = load_iris(True)
     m = RandomForestClassifier(n_estimators=3, max_depth=3).fit(X, y)
 
-Suppowe we need to express the logic of `m.predict` in SQLite. Here is how we can achieve that:
+Suppose we need to express the logic of `m.predict` in SQLite. Here is how we can achieve that:
 
     from skompiler import skompile
     expr = skompile(m.predict)
@@ -42,14 +42,14 @@ Voila, the value of the `sql` variable is a super-long expression which looks li
     THEN 1 ELSE 2 END as y
 
 It corresponds to the `m.predict` computation. Let us check how we can use it in a query.
-First import the data into an in-memory SQLite database:
+We import the data into an in-memory SQLite database:
 
     import sqlalchemy as sa
     import pandas as pd
     conn = sa.create_engine('sqlite://').connect()
     pd.DataFrame(X, columns=['x1', 'x2', 'x3', 'x4']).to_sql('data', conn)
 
-Now query the generated expression:
+query the data using the generated expression:
 
     results = pd.read_sql('select {0} from data'.format(sql), conn)
 
@@ -89,12 +89,14 @@ or request only the probability of the first class as a single `... as y2` expre
 By changing the first parameter of the `.to()` call you may produce output in a variety of other formats besides SQLite:
 
   * `sqlalchemy`: raw SQLAlchemy expression (which is a dialect-independent way of representing SQL). Jokes aside, SQL is sometimes a totally valid choice for deploying models into production.
-  * `sqlalchemy/<dialect>`: SQL in any of the SQLAlchemy-supported dialects (`firebird`, `mssql`, `mysql`, `oracle`, `postgresql`, `sqlite`, `sybase`). This is a convenience feature for those who are lazy to figure out how to compile raw SQLAlchemy to actual SQL.
+  
+     Note that generated SQL may (depending on the chosen method) include functions `exp` and `log`. If you work with SQLite, bear in mind that these functions are not supported out of the box and need to be [added separately](https://stackoverflow.com/a/2108921/318964) via `create_function`. You can find an example of how this can be done in `tests/evaluators.py` in the package source code.
+  * `sqlalchemy/<dialect>`: SQL string in any of the SQLAlchemy-supported dialects (`firebird`, `mssql`, `mysql`, `oracle`, `postgresql`, `sqlite`, `sybase`). This is a convenience feature for those who are lazy to figure out how to compile raw SQLAlchemy to actual SQL.
   * `excel`: Excel formula. Ever tried dragging a random forest equation down along the table? Fun! Due to its 8196-character limit on the formula length, however, Excel will not handle forests larger than `n_estimators=30` with `max_depth=5` or so, unfortunately.
   * `sympy`: A SymPy expression. Ever wanted to take a derivative of your model symbolically?
-  * `sympy/<lang>`: Code in the language `<lang>`, generated via SymPy. Supported values for `<lang>` are `c`, `cxx`, `rust`, `fortran`, `js`, `r`, `julia`, `mathematica`, `octave`. Note that the quality of the generated code varies depending on the model, language and the value of the `assign_to` parameter. 
+  * `sympy/<lang>`: Code in the language `<lang>`, generated via SymPy. Supported values for `<lang>` are `c`, `cxx`, `rust`, `fortran`, `js`, `r`, `julia`, `mathematica`, `octave`. Note that the quality of the generated code varies depending on the model, language and the value of the `assign_to` parameter. Again, this is just a convenience feature, you will get more control by dealing with `sympy` oode printers [manually](https://www.sympy.org/scipy-2017-codegen-tutorial/).
   * `python`: Python syntax tree (the same you'd get via `ast.parse`). This (and the following three options) are mostly useful for debugging and testing.
-  * `python/code`: Python source code.
+  * `python/code`: Python source code. The generated code will contain references to custom functions, such as `__argmax__`, `__sigmoid__`, etc. To execute the code you will need to provide these in the `locals` dictionary. See `skompiler.fromskast.python._eval_vars`.
   * `python/lambda`: Python callable function (primarily useful for debugging and testing). Equivalent to calling `expr.lambdify()`.
   * `string`: string, equivalent to `str(expr)`.
 
@@ -112,6 +114,8 @@ It is important to understand the following:
        expr.to('sqlalchemy/sqlite', 'result')
        > x + 1 as result
 
+   You can use `repr(expr)` on any SKAST expression to dump its unformatted internal representation.
+
  * At the moment `skompiler` transforms models into *expressions*, and this may affect the complexity of the output. You might have noted that in the introductory example above the SQL code for `predict` was significantly longer than the code for `predict_proba`. Why so? Because, essentially
 
        predict(x) = argmax(predict_proba(x))
@@ -125,7 +129,11 @@ It is important to understand the following:
    Note that the values of `predict_proba` in this expression must be expanded (and thus the computation repeated) multiple times.
 
    This problem could be overcome by performing computation in steps - first saving the values of `predict_proba`, then finding the argmax - in SQL this could be implemented via CTE-s. However, this is not how `SKompiler` works, at the moment, so enjoy the super-long SQLs. For example, the SQLite expression corresponding to `RandomForestClassifier(n_estimators=100, max_depth=5).fit(X, y).predict` is about 756KB-long (surprisingly, SQLite manages to parse and execute it successfully and rather quickly. Don't bother compiling it to SymPy or feeding into Excel, though).
+ 
+ * For larger models (say, a random forest or a gradient boosted model with 500+ trees) the resulting SKAST expression tree may become deeper than Python's default recursion limit of 1000. As a result you will get a `RecursionError` when trying to traslate the model. To alleviate this, raise the system recursion limit to sufficiently high value:
 
+       import sys
+       sys.setrecursionlimit(10000)
 
 Development
 -----------

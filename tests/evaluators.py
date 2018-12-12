@@ -16,7 +16,7 @@ class SQLiteEval:
     def __init__(self, X):
         self.engine = sa.create_engine("sqlite://")
         self.conn = self.engine.connect()
-        self.conn.connection.create_function('log', 1, _sql_log) #math.log)
+        self.conn.connection.create_function('log', 1, _sql_log)
         self.conn.connection.create_function('exp', 1, math.exp)
         df = pd.DataFrame(X, columns=['x{0}'.format(i+1) for i in range(X.shape[1])])
         df.to_sql('data', self.conn)
