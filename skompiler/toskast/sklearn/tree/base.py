@@ -20,9 +20,9 @@ def decision_tree(tree, inputs, method="predict"):
     >>> from sklearn.tree import DecisionTreeClassifier
     >>> m = DecisionTreeClassifier(max_depth=2, random_state=1).fit(*load_iris(True))
     >>> print(decision_tree(m.tree_, VectorIdentifier('x', m.n_features_)))
-    (0 if (x[3] <= 0.80...) else (1 if (x[3] <= 1.75) else 2))
+    (if (x[3] <= 0.80...) then 0 else (if (x[3] <= 1.75) then 1 else 2))
     >>> print(decision_tree(m.tree_, ['a','b','c','d'], method='predict_proba'))
-    ([1. 0. 0.] if (d <= 0.80...) else ([0... 0.90... 0.09...] if (d <= 1.75) else [0... 0.02... 0.97...]))
+    (if (d <= 0.80...) then [1. 0. 0.] else (if (d <= 1.75) then [0... 0.90... 0.09...] else [0... 0.02... 0.97...]))
     """
     features = inputs
 
@@ -54,10 +54,10 @@ class TreeWalker:
     >>> m =  DecisionTreeRegressor(max_depth=2, random_state=1).fit(*load_iris(True))
     >>> tr = TreeWalker(m.tree_, [IndexedIdentifier('x', i, 4) for i in range(4)])
     >>> print(tr.walk())
-    (0.0 if (x[3] <= 0.80...) else (1.09... if (x[3] <= 1.75) else 1.97...))
+    (if (x[3] <= 0.80...) then 0.0 else (if (x[3] <= 1.75) then 1.09... else 1.97...))
     >>> tr = TreeWalker(m.tree_, [IndexedIdentifier('x', i, 4) for i in range(4)], np.arange(m.tree_.node_count))
     >>> print(tr.walk())
-    (1 if (x[3] <= 0.80...) else (3 if (x[3] <= 1.75) else 4))
+    (if (x[3] <= 0.80...) then 1 else (if (x[3] <= 1.75) then 3 else 4))
     """
     
     def __init__(self, tree, features, node_values=None):

@@ -139,7 +139,7 @@ class CompareBinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'
 class LtEq(ASTNode, repr='<='): pass
 
 # IfThenElse
-class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='({iftrue} if {test} else {iffalse})'): pass
+class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='(if {test} then {iftrue} else {iffalse})'): pass
 
 # Special function
 class MakeVector(ASTNode, fields='elems'):
