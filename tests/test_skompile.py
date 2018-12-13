@@ -66,6 +66,10 @@ def test_skompile():
                 verify_one(model, method, 'python', expr,
                            binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'),
                            data_preprocessing=lambda X: X*2.1)
+                
+                # We don't check Excel correctness, but we can at least see that no exceptiosn fall out
+                expr.to('excel')
+                expr.to('excel', multistage=True)
 
 def test_sympy_skompile():
     """We run sympy in a separate test, because it takes longer than other generations"""

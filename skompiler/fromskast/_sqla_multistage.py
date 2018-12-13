@@ -6,7 +6,7 @@ from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
 from ..ast import ASTProcessor, ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct
-from ._common import StandardArithmetics, LazyLet, is_, tolist, not_implemented, process_assign_to
+from ._common import StandardArithmetics, LazyLet, is_, tolist, not_implemented, prepare_assign_to, id_generator
 
 
 def translate(expr, assign_to=None, from_obj='data', key_column='id', component=None):
@@ -19,7 +19,7 @@ def translate(expr, assign_to=None, from_obj='data', key_column='id', component=
     if component is not None:
         result = result._replace(cols=[result.cols[component]])
     
-    assign_to = process_assign_to(assign_to, len(result.cols))
+    assign_to = prepare_assign_to(assign_to, len(result.cols))
     if assign_to is not None:
         result = result._replace(cols=[col.label(lbl) for col, lbl in zip(result.cols, assign_to)])
     
@@ -77,7 +77,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
         else:
             from_obj.key_ = from_obj.columns[key_column]
         self.from_obj = from_obj
-        self.last_used_id = 0
+        self.temp_ids = id_generator()
     
     def Identifier(self, id):
         return Result([sa.column(id.id)], self.from_obj)
@@ -158,15 +158,11 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
     Step = is_(_step)
 
     # ------ The actual "multi-stage" logic -----
-    def _next_id(self, stem='temp'):
-        self.last_used_id += 1
-        return '_{0}{1}'.format(stem, self.last_used_id)
-    
     def _make_cte(self, result, col_names=None, key_label='__id__'):
         if col_names is None:
             col_names = ['f{0}'.format(i+1) for i in range(len(result.cols))]
         labeled_cols = [c.label(n) for c, n in zip(result.cols, col_names)]
-        new_tbl = sa.select([result.from_obj.key_.label(key_label)] + labeled_cols, from_obj=result.from_obj).cte(self._next_id('tmp'))
+        new_tbl = sa.select([result.from_obj.key_.label(key_label)] + labeled_cols, from_obj=result.from_obj).cte(next(self.temp_ids))
         new_tbl.key_ = new_tbl.columns[key_label]
         new_cols = [new_tbl.columns[n] for n in col_names]
         return Result(new_cols, new_tbl)

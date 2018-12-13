@@ -6,7 +6,7 @@ import warnings
 import numpy as np
 import sqlalchemy as sa
 from ..ast import ASTProcessor
-from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_, process_assign_to
+from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_, prepare_assign_to
 from ._sqla_multistage import translate as translate_multistage
 
 def translate(node, dialect=None, assign_to='y', component=None,
@@ -173,7 +173,7 @@ def to_sql(sa_exprs, dialect_name='sqlite', assign_to='y'):
     qs = [q.compile(dialect=dialect_module.dialect(),
                     compile_kwargs={'literal_binds': True}) for q in sa_exprs]
 
-    assign_to = process_assign_to(assign_to, len(qs))
+    assign_to = prepare_assign_to(assign_to, len(qs))
     if assign_to is None:
         return [str(q) for q in qs]
     else:

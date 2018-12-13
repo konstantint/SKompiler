@@ -47,7 +47,8 @@ We import the data into an in-memory SQLite database:
     import sqlalchemy as sa
     import pandas as pd
     conn = sa.create_engine('sqlite://').connect()
-    pd.DataFrame(X, columns=['x1', 'x2', 'x3', 'x4']).reset_index().to_sql('data', conn)
+    df = pd.DataFrame(X, columns=['x1', 'x2', 'x3', 'x4']).reset_index()
+    df.to_sql('data', conn)
 
 query the data using the generated expression:
 
@@ -84,7 +85,7 @@ or request only the probability of the first class as a single `... as y2` expre
 
     expr.to('sqlalchemy/sqlite', component=1, assign_to='y2')
 
-### Multi-stage SQL
+### Multi-stage code
 
 You might have noted that the SQL code for `predict` was significantly longer than the code for `predict_proba`. Why so? Because
 
@@ -124,6 +125,57 @@ The effect on the query size can be quite significant:
     len(expr.to('sqlalchemy/sqlite', multistage=True))
     > 2574
 
+The multi-stage translation is especially important if you need to generate Excel code, because Excel does not support formulas longer than 8196 characters. If you need to port complex models, splitting them up is therefore the only way. For fun's sake, let us work through an example.
+
+Suppose we have a decently complicated model, which would not fit into a cell as a single expression:
+
+    m = RandomForestClassifier(n_estimators=500, max_depth=10).fit(X, y)
+    import sys
+    sys.setrecursionlimit(10000)
+    len(skompile(m.predict).to('excel'))
+    > 934431
+
+How can we evaluate it via Excel? Start by copying our sample data to clipboard and pasting it into Excel:
+
+    df.to_clipboard()
+
+When I paste this into a new worksheet, the first row of the data occupies cells `C2`, `D2`, `E2` and `F2`. We need to take this information when compiling the model:
+
+    expr = skompile(m.predict, ['C2','D2','E2','F2'])
+
+Now let us generate a multistage Excel computation, putting the first intermediate result into the cell `H2`, the second into `I2`, etc along the row until whatever cell will take the final prediction output:
+
+    from skompiler.fromskast.excel import excel_row_generator
+    import sys
+    sys.setrecursionlimit(10000)
+
+    code = expr.to('excel', multistage=True, assign_to=excel_row_generator('H', 2))
+
+Note that we need to increase the system recursion limit in order to process large expressions. The resulting `code` object is a dictionary, mapping cell names to the corresponding expressions:
+
+    for k, v in code.items():
+        print(f'{k}={v[0:20]}... ({len(v)} bytes)')
+
+outputs a long-ish sequence of cells that we need to fill now in the second row:
+
+    H2=((((((((((((((((((((... (7965 bytes)
+    I2=((((((((((((((((((((... (7965 bytes)
+    ...
+    AZ2=((((((((((((((((((((... (6139 bytes)
+    BA2=MAX(AX2,AY2,AZ2)... (16 bytes)
+    BB2=IF(AX2=BA2,0,IF(AY2=... (29 bytes)
+
+We can use the clipboard to help us paste the formulas:
+    
+    formulas = pd.DataFrame({k: [f'={v}'] for k, v in code.items()})
+    formulas.to_clipboard()
+
+Now select the cell `G1` in the worksheet (right next to the data) and use the following keyboard incantation to paste and "drag" the formulas:
+
+    Ctrl+V, Left, Ctrl+Down, Right, F, Ctrl+Up, Ctrl+Shift+Down, Ctrl+Shift+Right, Ctrl+D
+
+(of course, you may also fill the cells in any other way, but this one is amusing, isn't it?). And here you are - the column BB now contains the predictions of the random forest model, all computed in pure Excel.
+
 ### Other formats
 
 By changing the first parameter of the `.to()` call you may produce output in a variety of other formats besides SQLite:
@@ -161,7 +213,7 @@ It is important to understand the following:
 
    Conversely, you can use `repr(expr)` on any SKAST expression to dump its unformatted internal representation.
 
- * As noted above, `skompiler` transforms models into *expressions*, and this may result in fairly lengthy outputs with repeated subexpressions, unless the translation is performed in a "multistage" manner. The multistage translation is currently only implemented for SQL, however.
+ * As noted above, `skompiler` transforms models into *expressions*, and this may result in fairly lengthy outputs with repeated subexpressions, unless the translation is performed in a "multistage" manner. The multistage translation is currently only implemented for SQL and Excel, however.
 
  * For larger models (say, a random forest or a gradient boosted model with 500+ trees) the resulting SKAST expression tree may become deeper than Python's default recursion limit of 1000. As a result you will get a `RecursionError` when trying to traslate the model. To alleviate this, raise the system recursion limit to sufficiently high value:
 

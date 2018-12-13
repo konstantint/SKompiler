@@ -1,6 +1,7 @@
 """
 Functions, useful within multiple ASTProcessor implementations
 """
+from itertools import count
 from ..ast import inline_definitions, IndexedIdentifier, NumberConstant, Exp
 
 def is_(val):
@@ -33,9 +34,9 @@ class LazyLet:
 
     Reference = Definition = not_implemented
 
-    def Let(self, let):
+    def Let(self, node):
         "Lazy implementation of the 'Let' node. Simply substitutes variables and proceeds as normal."
-        return self(inline_definitions(let))
+        return self(inline_definitions(node))
 
 
 class VectorsAsLists:
@@ -117,19 +118,19 @@ class StandardArithmetics:
         return lambda x: 1/(1 + self(Exp())(-x))
 
 
-def process_assign_to(assign_to, n_actual_targets):
+def prepare_assign_to(assign_to, n_actual_targets):
     """Converts the value of the assign_to parameter to a list of strings, as needed.
     
-    >>> process_assign_to('x', 1)
+    >>> prepare_assign_to('x', 1)
     ['x']
-    >>> process_assign_to('x', 2)
+    >>> prepare_assign_to('x', 2)
     ['x1', 'x2']
-    >>> process_assign_to(['x'], 1)
+    >>> prepare_assign_to(['x'], 1)
     ['x']
-    >>> process_assign_to(['a','b'], 2)
+    >>> prepare_assign_to(['a','b'], 2)
     ['a', 'b']
-    >>> process_assign_to(None, 3)
-    >>> process_assign_to(['a'], 2)
+    >>> prepare_assign_to(None, 3)
+    >>> prepare_assign_to(['a'], 2)
     Traceback (most recent call last):
     ...
     ValueError: The number of outputs (2) does not match the number of assign_to values (1)
@@ -149,3 +150,7 @@ def process_assign_to(assign_to, n_actual_targets):
                           " of assign_to values ({1})").format(n_actual_targets, len(assign_to)))
     
     return assign_to
+
+
+def id_generator(template='_tmp{0}', start=1):
+    return map(template.format, count(start))  # NB: Py3-specific

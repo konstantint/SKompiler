@@ -1,3 +1,8 @@
+Version 0.3
+-------------
+
+    - Multi-stage Excel code generation
+
 Version 0.2
 -------------
 

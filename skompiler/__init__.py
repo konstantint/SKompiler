@@ -6,6 +6,6 @@ Author: Konstantin Tretyakov
 License: MIT
 '''
 
-__version__ = '0.2'
+__version__ = '0.3'
 
 from .api import skompile
