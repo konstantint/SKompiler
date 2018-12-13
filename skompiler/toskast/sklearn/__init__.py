@@ -117,6 +117,9 @@ def _(model, inputs, method):
 
 
 def _prepare_inputs(inputs, n_features):
+    if hasattr(inputs, '__next__'):
+        # Unroll iterators
+        inputs = [next(inputs) for i in range(n_features)]
     if isinstance(inputs, str):
         return VectorIdentifier(inputs, size=n_features)
     elif isinstance(inputs, list) and isinstance(inputs[0], str):

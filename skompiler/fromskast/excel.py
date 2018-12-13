@@ -3,7 +3,8 @@ SKompiler: Generate Sympy expressions from SKAST.
 """
 import warnings
 from collections import OrderedDict
-from itertools import product, chain
+from itertools import product, chain, takewhile, count
+import re
 import numpy as np
 from ..ast import ASTProcessor
 from ._common import is_, LazyLet, VectorsAsLists, id_generator
@@ -17,7 +18,7 @@ def translate(node, component=None, multistage=False, assign_to=None,
                    which can be filled in a multi-stage computation.
                    When None, a default sequence ['A1', 'B1', ...] will be used.
                    if you would like such sequence, but beginning at, say 'G3',
-                   pass excel_row_generator('G', 3).
+                   pass excel_range('G3:*3')
 
         multistage_subexpression_min_length (int):
             Allows to reduce the number of stages in the computation, by preventing the creation
@@ -89,28 +90,94 @@ def is_fmt(template):
         return fn
     return auto_compacting_operator
 
+def _takeuntil(value, iterable):
+    if value is None:
+        return iterable
+    else:
+        return chain(takewhile(lambda x: x != value, iterable), [value])
+
 _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-def excel_row_generator(start_column='A', row=1):
+
+def excel_column_names(start_column='A', end_column=None):
     """
-    >>> gen = excel_row_generator('C', 3)
+    Generates excel column names starting from a given one.
+    end_column is inclusive.
+
+    >>> gen = excel_column_names('C')
     >>> [next(gen) for _ in range(4)]
-    ['C3', 'D3', 'E3', 'F3']
-    >>> gen = excel_row_generator('Y', 3)
-    >>> [next(gen) for _ in range(5)]
-    ['Y3', 'Z3', 'AA3', 'AB3', 'AC3']
-    >>> gen = excel_row_generator('AY', 1)
-    >>> [next(gen) for _ in range(5)]
-    ['AY1', 'AZ1', 'BA1', 'BB1', 'BC1']
-    >>> gen = excel_row_generator('ZY', 1)
-    >>> [next(gen) for _ in range(5)]
-    ['ZY1', 'ZZ1', 'AAA1', 'AAB1', 'AAC1']
+    ['C', 'D', 'E', 'F']
+    >>> list(excel_column_names('Y', 'AC'))
+    ['Y', 'Z', 'AA', 'AB', 'AC']
+    >>> list(excel_column_names('AY', 'BC'))
+    ['AY', 'AZ', 'BA', 'BB', 'BC']
+    >>> list(excel_column_names('ZY', 'AAC'))
+    ['ZY', 'ZZ', 'AAA', 'AAB', 'AAC']
     """
+
     ns = _letters
     all_cols = map(''.join, chain(ns, product(ns, ns), product(ns, ns, ns)))
-    while next(all_cols) != start_column: pass
-    all_cols = chain([start_column], all_cols)
-    yield from ('{0}{1}'.format(col, row) for col in all_cols)
+    while next(all_cols) != start_column:
+        pass
+    return _takeuntil(end_column, chain([start_column], all_cols))
 
+_range_re = re.compile(r'^([\*A-Z]+)(\d+):([\*A-Z]+)(\d+)$')
+
+def excel_range(range_):
+    """
+    A convenience method for generating lists of excel cells in a row or column.
+    The range_ argument is an expression of the form A3:G3
+    The second endpoint of the range may contain * instead of the
+    row or column coordinate (as in A3:*3 or A3:A*), in this case
+    the return value is a generator, enumerating cells in the given
+    row or column indefinitely.
+    """
+    matches = _range_re.match(range_.upper())
+    if not matches:
+        raise ValueError("Range must be of the form A1:B1")
+    lcol, lrow, rcol, rrow = matches.groups()
+    if lcol == '*' or lrow == '*':
+        raise ValueError("Only the right side of the interval may include wildcard")
+    if lcol == rcol:  # Fixed column
+        if rrow == '*':
+            rows = count(int(lrow))
+        else:
+            rows = range(int(lrow), int(rrow)+1)
+        yield from ('{0}{1}'.format(lcol, i) for i in rows)
+    elif lrow == rrow: # Fixed row
+        cols = excel_column_names(lcol, None if rcol == '*' else rcol)
+        yield from ('{0}{1}'.format(col, lrow) for col in cols)
+    else:
+        raise ValueError("Only single-column or single-row ranges are supported")
+
+def _compact_string(s, max_len=70):
+    if len(s) > max_len:
+        part = (max_len - 30) // 2
+        return s[:part] + ' ...{0} chars skipped... '.format(len(s)-2*part) + s[-part:]
+    else:
+        return s
+
+class ExcelCode(OrderedDict):
+    """A version of OrderedDict which prints itself nicer."""
+    def __str__(self):
+        lines = ['{0}={1}'.format(k, _compact_string(v))
+                 for k, v in self.items()]
+        if len(lines) > 10:
+            lines = lines[:4] + ['      ... {0} lines skipped ...'.format(len(lines)-8)] +\
+                    lines[-4:]
+        return '\n'.join(lines)
+
+    def to_dataframe(self):
+        """Converts code to a pandas dataframe,
+        suitable for pasting into Excel.
+
+        The main usecase for this method is:
+            
+            code.to_dataframe().to_clipboard()
+
+        """
+        import pandas as pd
+        return pd.DataFrame([[f'={v}' for v in self.values()]],
+                            columns=self.keys())
 
 class ExcelWriter(ASTProcessor, VectorsAsLists, LazyLet):
     """A SK AST processor, producing an Excel expression (or a list of those)"""
@@ -129,9 +196,9 @@ class ExcelWriter(ASTProcessor, VectorsAsLists, LazyLet):
         if self.multistage:
             if assign_to is None:
                 warnings.warn("Value of the assign_to parameter is not provided. Will use default ['A1', 'B1', ...']", UserWarning)
-                assign_to = excel_row_generator()
+                assign_to = excel_range('A1:*1')
             self.assign_to = assign_to if hasattr(assign_to, '__next__') else iter(assign_to)
-            self.code = OrderedDict()
+            self.code = ExcelCode()
             self.references = {}
             self.temp_ids = id_generator()
 
