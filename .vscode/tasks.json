@@ -17,7 +17,6 @@
             "command": "jupyter notebook",
             "problemMatcher": []
         },
-
         {
             "label": "shell",
             "type": "shell",
@@ -29,7 +28,6 @@
                 "focus": true
             }
         },
-
         {
             "label": "py.test: all tests",
             "command": "py.test",
@@ -40,11 +38,12 @@
             },
             "group": "test"
         },
-
         {
             "label": "py.test: current file",
             "command": "py.test",
-            "args": ["${file}"],
+            "args": [
+                "${file}"
+            ],
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
@@ -54,6 +53,11 @@
                 "kind": "test",
                 "isDefault": true
             }
+        },
+        {
+            "label": "Upload to PyPI",
+            "command": ".\\.vscode\\pypi-upload.cmd",
+            "problemMatcher": []
         }
     ]
 }
