@@ -47,7 +47,7 @@ We import the data into an in-memory SQLite database:
     import sqlalchemy as sa
     import pandas as pd
     conn = sa.create_engine('sqlite://').connect()
-    pd.DataFrame(X, columns=['x1', 'x2', 'x3', 'x4']).to_sql('data', conn)
+    pd.DataFrame(X, columns=['x1', 'x2', 'x3', 'x4']).reset_index().to_sql('data', conn)
 
 query the data using the generated expression:
 
@@ -84,6 +84,46 @@ or request only the probability of the first class as a single `... as y2` expre
 
     expr.to('sqlalchemy/sqlite', component=1, assign_to='y2')
 
+### Multi-stage SQL
+
+You might have noted that the SQL code for `predict` was significantly longer than the code for `predict_proba`. Why so? Because
+
+    predict(x) = argmax(predict_proba(x))
+
+There is, however, no single `argmax` function in SQL, hence it has to be faked using approximately the following logic:
+
+    predict(x) = if predict_proba(x)[0] == max(predict_proba(x)) then 0
+                    else if predict_proba(x)[1] == max(predict_proba(x)) then 1
+                    else 2
+
+Note that the values of `predict_proba` in this expression must be expanded (and thus the computation repeated) multiple times. 
+This problem could be overcome by performing computation in several steps, saving and reusing intermediate values, rather than doing everything within a single expression. In SQL this can bbe done with the help of `with` expressions:
+
+    with proba as (
+         select [predict_proba computation] from data
+    ),
+    max as (
+         select [max computation] from proba
+    ),
+    argmax as (
+         select [argmax computation] from ...
+    )
+
+To generate this type of SQL, specify `multistage=True`:
+
+    expr.to('sqlalchemy/sqlite', multistage=True,
+            multistage_key_column='index', 
+            multistage_from_obj='data')
+
+Note that while in single-expression mode you only get a single column expression, which you need to wrap in the relevant `SELECT .. FROM ..` statement, in multistage mode the whole query is generated for you. For that reason you need to provide the name of the source table as well as the key column.
+
+The effect on the query size can be quite significant:
+
+    len(expr.to('sqlalchemy/sqlite'))
+    > 15558
+    len(expr.to('sqlalchemy/sqlite', multistage=True))
+    > 2574
+
 ### Other formats
 
 By changing the first parameter of the `.to()` call you may produce output in a variety of other formats besides SQLite:
@@ -114,22 +154,15 @@ It is important to understand the following:
        expr.to('sqlalchemy/sqlite', 'result')
        > x + 1 as result
 
-   You can use `repr(expr)` on any SKAST expression to dump its unformatted internal representation.
+   Simpler expressions can be generated from strings:
 
- * At the moment `skompiler` transforms models into *expressions*, and this may affect the complexity of the output. You might have noted that in the introductory example above the SQL code for `predict` was significantly longer than the code for `predict_proba`. Why so? Because, essentially
+       from skompiler.toskast.string import translate as fromstring
+       fromstring('10 * (x + 1)')
 
-       predict(x) = argmax(predict_proba(x))
+   Conversely, you can use `repr(expr)` on any SKAST expression to dump its unformatted internal representation.
 
-   There is, however, no single `argmax` function in SQL, hence it has to be faked using approximately the following logic:
+ * As noted above, `skompiler` transforms models into *expressions*, and this may result in fairly lengthy outputs with repeated subexpressions, unless the translation is performed in a "multistage" manner. The multistage translation is currently only implemented for SQL, however.
 
-       predict(x) = if predict_proba(x)[0] == max(predict_proba(x)) then 0
-                    else if predict_proba(x)[1] == max(predict_proba(x)) then 1
-                    else 2
-
-   Note that the values of `predict_proba` in this expression must be expanded (and thus the computation repeated) multiple times.
-
-   This problem could be overcome by performing computation in steps - first saving the values of `predict_proba`, then finding the argmax - in SQL this could be implemented via CTE-s. However, this is not how `SKompiler` works, at the moment, so enjoy the super-long SQLs. For example, the SQLite expression corresponding to `RandomForestClassifier(n_estimators=100, max_depth=5).fit(X, y).predict` is about 756KB-long (surprisingly, SQLite manages to parse and execute it successfully and rather quickly. Don't bother compiling it to SymPy or feeding into Excel, though).
- 
  * For larger models (say, a random forest or a gradient boosted model with 500+ trees) the resulting SKAST expression tree may become deeper than Python's default recursion limit of 1000. As a result you will get a `RecursionError` when trying to traslate the model. To alleviate this, raise the system recursion limit to sufficiently high value:
 
        import sys

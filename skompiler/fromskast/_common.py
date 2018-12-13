@@ -15,13 +15,13 @@ def tolist(x):
 def not_implemented(self, node, *args, **kw):
     raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
 
-def bin_op(self, op):
+def bin_op(self, op, **kw):
     "Most common implementation for BinOp or CompareBinOp"
-    return self(op.op)(self(op.left), self(op.right))
+    return self(op.op, **kw)(self(op.left, **kw), self(op.right, **kw))
 
-def unary_func(self, op):
+def unary_func(self, op, **kw):
     "Common implementation for UnaryFunc"
-    return self(op.op)(self(op.arg))
+    return self(op.op, **kw)(self(op.arg, **kw))
 
 #pylint: disable=not-callable
 class LazyLet:
@@ -115,3 +115,37 @@ class StandardArithmetics:
 
     def Sigmoid(self, _):
         return lambda x: 1/(1 + self(Exp())(-x))
+
+
+def process_assign_to(assign_to, n_actual_targets):
+    """Converts the value of the assign_to parameter to a list of strings, as needed.
+    
+    >>> process_assign_to('x', 1)
+    ['x']
+    >>> process_assign_to('x', 2)
+    ['x1', 'x2']
+    >>> process_assign_to(['x'], 1)
+    ['x']
+    >>> process_assign_to(['a','b'], 2)
+    ['a', 'b']
+    >>> process_assign_to(None, 3)
+    >>> process_assign_to(['a'], 2)
+    Traceback (most recent call last):
+    ...
+    ValueError: The number of outputs (2) does not match the number of assign_to values (1)
+    """
+
+    if assign_to is None:
+        return None
+
+    if isinstance(assign_to, str):
+        if n_actual_targets == 1:
+            return [assign_to]
+        else:
+            return ['{0}{1}'.format(assign_to, i+1) for i in range(n_actual_targets)]
+    
+    if len(assign_to) != n_actual_targets:
+        raise ValueError(("The number of outputs ({0}) does not match the number"
+                          " of assign_to values ({1})").format(n_actual_targets, len(assign_to)))
+    
+    return assign_to

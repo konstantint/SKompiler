@@ -6,15 +6,33 @@ import warnings
 import numpy as np
 import sqlalchemy as sa
 from ..ast import ASTProcessor
-from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_
+from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_, process_assign_to
+from ._sqla_multistage import translate as translate_multistage
 
-def translate(node, dialect=None, assign_to='y', component=None):
+def translate(node, dialect=None, assign_to='y', component=None,
+              multistage=False, multistage_key_column='id', multistage_from_obj='data'):
     """Translates SKAST to an SQLAlchemy expression (or a list of those, if the output should be a vector).
 
     If dialect is not None, further compiles the expression(s) to a given dialect via to_sql.
     
     Kwargs:
        assign_to (None/string/list of str): See to_sql
+
+       multistage (bool):  Translate in "multistage mode". In this mode the returned value is not an expression
+                               for a single column (or a list of such expressions), which must then be manually inserted
+                               into an appropriate SELECT clause. Insted, it is a complete SELECT query, which may include CTEs.
+                               This makes it possible to compute complex functions (such as ArgMax) without having to repeat the
+                               same computation over and over again.
+                               
+                               As it is a full query, you must provide the name of the source object to be queried from (which can
+                               be a table name or a SQLAlchemy SELECT object). In addition, you must specify the name of the
+                               key column in the source data, as this will be used to join the CTEs in the query.
+
+                               assign_to may not be None in multistage mode.
+
+       multistage_from_obj:    A string or a SQLAlchemy select object - the source table for the data.
+       multistage_key_column:  A string or a sa.column object, naming the key column in the source table.
+
     
     >>> from skompiler.toskast.string import translate as skast
     >>> expr = skast('[2*x[0], 1] if x[1] <= 3 else [12.0, 45.5]')
@@ -22,13 +40,20 @@ def translate(node, dialect=None, assign_to='y', component=None):
     CASE WHEN (x2 <= 3) THEN 2 * x1 ELSE 12.0 END as y1,
     CASE WHEN (x2 <= 3) THEN 1 ELSE 45.5 END as y2
     """
-    saexprs = SQLAlchemyWriter()(node)
-    if component is not None:
-        saexprs = saexprs[component]
-    if dialect is None:
-        return saexprs
+    if multistage:
+        saexprs = translate_multistage(node, assign_to, multistage_from_obj, multistage_key_column)
+        if dialect is None:
+            return saexprs
+        else:
+            return to_sql(saexprs, dialect, assign_to=None)[0]
     else:
-        return to_sql(saexprs, dialect, assign_to=assign_to)
+        saexprs = SQLAlchemyWriter()(node)
+        if component is not None:
+            saexprs = saexprs[component]
+        if dialect is None:
+            return saexprs
+        else:
+            return to_sql(saexprs, dialect, assign_to=assign_to)
 
 def _sum(iterable):
     "The built-in 'sum' does not work for us as we need."
@@ -69,13 +94,13 @@ class SQLAlchemyWriter(ASTProcessor, StandardArithmetics, VectorsAsLists, LazyLe
         self.negative_infinity = negative_infinity
     
     def Identifier(self, id):
-        return sa.Column(id.id)
+        return sa.column(id.id)
 
     def IndexedIdentifier(self, sub):
         warnings.warn("SQL does not support vector types natively. "
                       "Numbers will be appended to the given feature name, "
                       "it may not be what you intend.", UserWarning)
-        return sa.Column("{0}{1}".format(sub.id, sub.index+1))
+        return sa.column("{0}{1}".format(sub.id, sub.index+1))
 
     def NumberConstant(self, num):
         # Infinities have to be handled separately
@@ -148,17 +173,9 @@ def to_sql(sa_exprs, dialect_name='sqlite', assign_to='y'):
     qs = [q.compile(dialect=dialect_module.dialect(),
                     compile_kwargs={'literal_binds': True}) for q in sa_exprs]
 
+    assign_to = process_assign_to(assign_to, len(qs))
     if assign_to is None:
         return [str(q) for q in qs]
-
-    if isinstance(assign_to, str):
-        if len(qs) > 1:
-            assign_to = ['{0}{1}'.format(assign_to, i+1) for i in range(len(qs))]
-        else:
-            assign_to = [assign_to]
-    
-    if len(assign_to) != len(qs):
-        raise ValueError("The number of resulting SQL expressions does not match the number of "
-                         "target column names.")
-
-    return ',\n'.join(['{0} as {1}'.format(q, tgt) for q, tgt in zip(qs, assign_to)])
+    else:
+        return ',\n'.join(['{0} as {1}'.format(q, tgt)
+                           for q, tgt in zip(qs, assign_to)])

@@ -3,7 +3,7 @@ Utility for basic testing of models.
 """
 import numpy as np
 from sklearn.datasets import load_iris
-from .evaluators import PythonEval, SympyEval, SQLiteEval
+from .evaluators import PythonEval, SympyEval, SQLiteEval, SQLiteMultistageEval
 
 # Set up evaluators
 X, y = load_iris(True)
@@ -14,7 +14,8 @@ _evaluators = {
     'python': PythonEval(X),
     'sympy': SympyEval(X, true_argmax=False),
     'sympy2': SympyEval(X, true_argmax=True),
-    'sqlite': SQLiteEval(X)
+    'sqlite': SQLiteEval(X),
+    'sqlite2': SQLiteMultistageEval(X),
 }
 
 def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, data_preprocessing=None):
@@ -39,3 +40,4 @@ def verify(model, method, expr, binary_fix=False, inf_fix=False):
     if not binary_fix and method == 'predict' and hasattr(model, 'decision_function'):
         verify_one(model, method, 'sympy2', expr, binary_fix, inf_fix)  # See that Sympy supports true_argmax correctly
     verify_one(model, method, 'sqlite', expr, binary_fix, inf_fix)
+    verify_one(model, method, 'sqlite2', expr, binary_fix, inf_fix)
