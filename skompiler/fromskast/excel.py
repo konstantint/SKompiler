@@ -244,6 +244,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     MatVecProduct = is_(_matvecproduct)
     DotProduct = is_(_dotproduct)
     VecSum = is_(_sum)
+    VecMax = is_(_max)
 
     def ArgMax(self, _):
         return self._argmax
@@ -258,13 +259,11 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
         sum_var = self.possibly_add_named_subexpression(_sum(xs))
         return ['({0}/{1})'.format(x, sum_var) for x in xs]
 
-    def SKLearnSoftmax(self, _):
-        return self._sklearn_softmax
+    def Softmax(self, _):
+        return self._softmax
 
-    def _sklearn_softmax(self, xs):
-        xs = [self.possibly_add_named_subexpression(x) for x in xs]
-        x_max = self.possibly_add_named_subexpression(_max(xs))
-        return self._vecsumnormalize(['EXP({0}-{1})'.format(x, x_max) for x in xs])
+    def _softmax(self, xs):
+        return self._vecsumnormalize(['EXP({0})'.format(x) for x in xs])
 
     def Let(self, node, **kw):
         if not self.multistage:

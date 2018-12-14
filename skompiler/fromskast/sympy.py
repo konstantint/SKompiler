@@ -1,8 +1,8 @@
 """
 SKompiler: Generate Sympy expressions from SKAST.
 """
+import numpy as np
 import sympy as sp
-from sklearn.utils.extmath import softmax
 from ..ast import IsElemwise, Mul
 from ._common import ASTProcessor, is_, StandardOps, StandardArithmetics
 
@@ -74,10 +74,14 @@ def _argmax(val):
     pieces.append((len(val)-1, True))
     return sp.Piecewise(*pieces)
 
-def _sklearn_softmax(vec):
+def _max(val):
+    return sp.Max(*val)
+
+def _softmax(vec):
     "A sympy implementation of sklearn's softmax"
-    smax = [sp.exp(vec[i] - sp.Max(*vec)) for i in range(len(vec))]
-    return sp.ImmutableMatrix([smax[i] / sum(smax) for i in range(len(smax))])
+    sexp = [sp.exp(vec[i]) for i in range(len(vec))]
+    return sp.ImmutableMatrix([sexp[i] / sum(sexp) for i in range(len(sexp))])
+
 
 class SympyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     """A SK AST processor, producing a Sympy expression"""
@@ -164,15 +168,23 @@ class SympyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     Log = is_(sp.log)
     Step = is_(sp.Heaviside)
     VecSum = is_(sum) # Yes, we return a Python summation here
-    SKLearnSoftmax = is_(_sklearn_softmax)
+    Softmax = is_(_softmax)
+    VecMax = is_(_max)
 
     def ArgMax(self, _):
         return _argmax if self.true_argmax else sp.Function('argmax')
 
 # Utility function
+
+def _softmax(X):
+    X = np.exp(X)
+    sum_prob = np.sum(X, axis=1).reshape((-1, 1))
+    X /= sum_prob
+    return X
+
 _lambdify_modules = ["numpy",
                      {"Heaviside": lambda x: int(x > 0),
-                      "sklearn_softmax": lambda x: softmax([x])[0, :]
+                      "softmax": lambda x: _softmax([x])[0, :]
                      }]
 
 def lambdify(sympy_inputs_str, sympy_expr):

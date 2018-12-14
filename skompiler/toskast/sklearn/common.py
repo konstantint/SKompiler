@@ -2,7 +2,8 @@
 Common useful functionality.
 """
 from ...ast import UnaryFunc, ArgMax, Log, LFold, NumberConstant,\
-                   MakeVector, BinOp, Div, Add, VecSum, Let, Definition, Reference
+                   MakeVector, BinOp, Div, Add, VecSum, Let, Definition, Reference,\
+                   VecMax, Softmax, Sub
 
 
 def classifier(probs, method):
@@ -43,3 +44,10 @@ def vecsumnormalize(node, vector_dim):
     return let(defn(x=node),
                defn(s=UnaryFunc(VecSum(), ref('x'))),
                BinOp(Div(), ref('x'), repeat(ref('s'), vector_dim)))
+
+
+def sklearn_softmax(node, vector_dim):
+    return let(defn(x=node),
+               defn(xmax=UnaryFunc(VecMax(), ref('x'))),
+               defn(xfix=BinOp(Sub(), ref('x'), repeat(ref('xmax'), vector_dim))),
+               UnaryFunc(Softmax(), ref('xfix')))

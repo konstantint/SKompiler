@@ -163,8 +163,9 @@ class Sigmoid(ASTNode, IsElemwise, repr='sigmoid'): pass
 
 # Some functions take vector arguments but do not distribute elementwise
 class VecSum(ASTNode, repr='sum'): pass
+class VecMax(ASTNode, repr='max'): pass
 class ArgMax(ASTNode, repr='argmax'): pass
-class SKLearnSoftmax(ASTNode, repr='sklearn_softmax'): pass
+class Softmax(ASTNode, repr='softmax'): pass
 
 # Binary operators
 class BinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass

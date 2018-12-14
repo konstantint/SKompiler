@@ -62,9 +62,8 @@ def _sum(iterable):
 def _iif(cond, iftrue, iffalse):
     return sa.case([(cond, iftrue)], else_=iffalse)
 
-def _sklearn_softmax(xs):
-    x_max = _max(xs)
-    return _vecsumnormalize([sa.func.exp(x - x_max) for x in xs])
+def _softmax(xs):
+    return _vecsumnormalize([sa.func.exp(x) for x in xs])
 
 def _matvecproduct(M, x):
     return [_sum(m_i[j] * x[j] for j in range(len(x))) for m_i in M]
@@ -116,7 +115,8 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics, VectorsAs
     Log = is_(sa.func.log)
     Step = is_(_step)
     VecSum = is_(_sum)
-    SKLearnSoftmax = is_(_sklearn_softmax)
+    VecMax = is_(_max)
+    Softmax = is_(_softmax)
     ArgMax = is_(_argmax)
 
 

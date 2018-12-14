@@ -5,7 +5,7 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ArgMax, SKLearnSoftmax, IsElemwise, VecSum
+from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
                      not_implemented, prepare_assign_to, id_generator
 
@@ -112,15 +112,17 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
         arg = self(node.arg)
         if isinstance(node.op, ArgMax):
             return self._argmax(arg)
-        elif isinstance(node.op, SKLearnSoftmax):
-            return self._sklearn_softmax(arg)
+        elif isinstance(node.op, VecMax):
+            return self._vecmax(arg)
         elif isinstance(node.op, VecSum):
             return self._vecsum(arg)
+        elif isinstance(node.op, Softmax):
+            return self._softmax(arg)
         else:
             op = self(node.op)
             return Result([op(el) for el in arg.cols], arg.from_obj)
 
-    ArgMax = VecSumNormalize = VecSum = SKLearnSoftmax = not_implemented
+    ArgMax = VecSumNormalize = VecSum = VecMax = Softmax = not_implemented
 
     def BinOp(self, node, **kw):
         left, right, op = self(node.left), self(node.right), self(node.op)
@@ -188,14 +190,11 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
                          else_=len(features.cols)-1)
         return Result([argmax], _merge(features.from_obj, max_val.from_obj))
     
-    def _sklearn_softmax(self, result):
-        features = self._make_cte(result)
-        max_val = Result([_max(features.cols)], features.from_obj)
-        max_val = self._make_cte(max_val, ['_max'])
-
-        sub_max = Result([sa.func.exp(col - max_val.cols[0]) for col in features.cols],
-                         _merge(features.from_obj, max_val.from_obj))
-        return self._vecsumnormalize(sub_max)
+    def _vecmax(self, result):
+        return Result([_max(result.cols)], result.from_obj)
+    
+    def _softmax(self, result):
+        return self._vecsumnormalize(Result([sa.func.exp(col) for col in result.cols], result.from_obj))
 
     def _vecsumnormalize(self, result):
         features = self._make_cte(result)

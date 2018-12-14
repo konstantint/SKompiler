@@ -31,7 +31,6 @@ In general, use utils.evaluate to evaluate SKAST expressions.
 """
 import ast
 import numpy as np
-from sklearn.utils.extmath import softmax
 from ..ast import USub, Identifier, NumberConstant, IsBoolean, merge_let_scopes
 from ._common import ASTProcessor, StandardOps
 
@@ -159,7 +158,8 @@ class PythonASTWriter(ASTProcessor, StandardOps):
     VecSum = _ident('__sum__')
     ArgMax = _ident('__argmax__')
     Sigmoid = _ident('__sigmoid__')
-    SKLearnSoftmax = _ident('__sklearn_softmax__')
+    Softmax = _ident('__softmax__')
+    VecMax = _ident('__max__')
 
     # Operators
     Mul = _is(ast.Mult())
@@ -174,15 +174,23 @@ class PythonASTWriter(ASTProcessor, StandardOps):
     LtEq = _is(ast.LtE())
 
 # ------------- Evaluation of Python AST-s --------------- #
+
+def _softmax(X):
+    X = np.exp(X)
+    sum_prob = np.sum(X, axis=1).reshape((-1, 1))
+    X /= sum_prob
+    return X
+
 _eval_vars = {
     '__np__': np,
     '__exp__': np.exp,
     '__log__': np.log,
     '__sum__': np.sum,
     '__argmax__': np.argmax,
+    '__max__': np.max,
     '__sigmoid__': lambda z: 1.0/(1.0 + np.exp(-z)),
     '__sum_normalize__': lambda x: x / np.sum(x),
-    '__sklearn_softmax__': lambda x: softmax([x])[0, :],
+    '__softmax__': lambda x: _softmax([x])[0, :],
     '__step__': lambda x: 1 if x > 0 else 0  # This is how step is implemented in LogisticRegression
 }
 
