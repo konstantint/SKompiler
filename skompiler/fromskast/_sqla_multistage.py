@@ -5,8 +5,8 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ASTProcessor, ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct, Elemwise
-from ._common import StandardArithmetics, LazyLet, is_, tolist, not_implemented, prepare_assign_to, id_generator
+from ..ast import ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct, IsElemwise
+from ._common import ASTProcessor, StandardArithmetics, LazyLet, is_, tolist, not_implemented, prepare_assign_to, id_generator
 
 
 def translate(expr, assign_to=None, from_obj='data', key_column='id', component=None):
@@ -123,7 +123,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
 
     def BinOp(self, node):
         left, right, op = self(node.left), self(node.right), self(node.op)
-        if not isinstance(node.op, Elemwise):
+        if not isinstance(node.op, IsElemwise):
             return Result(op(left.cols, right.cols), _merge(left.from_obj, right.from_obj))
         elif len(left.cols) != len(right.cols):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))

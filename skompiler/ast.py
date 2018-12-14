@@ -150,12 +150,12 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
 class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'): pass
 
 # Some unary functions distribute over vectors. We mark them as such
-class Elemwise: pass
-class USub(ASTNode, Elemwise, repr='-'): pass     # Unary minus operator
-class Exp(ASTNode, Elemwise, repr='exp'): pass
-class Log(ASTNode, Elemwise, repr='log'): pass
-class Step(ASTNode, Elemwise, repr='step'): pass  # Heaviside step (x >= 0)
-class Sigmoid(ASTNode, Elemwise, repr='sigmoid'): pass
+class IsElemwise: pass
+class USub(ASTNode, IsElemwise, repr='-'): pass     # Unary minus operator
+class Exp(ASTNode, IsElemwise, repr='exp'): pass
+class Log(ASTNode, IsElemwise, repr='log'): pass
+class Step(ASTNode, IsElemwise, repr='step'): pass  # Heaviside step (x >= 0)
+class Sigmoid(ASTNode, IsElemwise, repr='sigmoid'): pass
 
 # Some functions take vector arguments but do not distribute elementwise
 class VecSumNormalize(ASTNode, repr='sum_normalize'): pass
@@ -164,16 +164,22 @@ class SKLearnSoftmax(ASTNode, repr='sklearn_softmax'): pass
 
 # Binary operators
 class BinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
-class Mul(ASTNode, Elemwise, repr='*'): pass
-class Add(ASTNode, Elemwise, repr='+'): pass
-class Sub(ASTNode, Elemwise, repr='-'): pass
-class Div(ASTNode, Elemwise, repr='/'): pass
+class Mul(ASTNode, IsElemwise, repr='*'): pass
+class Add(ASTNode, IsElemwise, repr='+'): pass
+class Sub(ASTNode, IsElemwise, repr='-'): pass
+class Div(ASTNode, IsElemwise, repr='/'): pass
 class DotProduct(ASTNode, repr='v@v'): pass
 class MatVecProduct(ASTNode, repr='m@v'): pass
 
-# Comparison predicate
-class CompareBinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
-class LtEq(ASTNode, Elemwise, repr='<='): pass
+# Left-associative fold of an operator over a list of arguments
+# E.g. sum(xs) := LFold(Add(), xs)
+class LFold(ASTNode, fields='op elems'):
+    def __str__(self):
+        return str(self.op).join(str(e) for e in self.elems)
+
+# Boolean binary ops
+class IsBoolean: pass
+class LtEq(ASTNode, IsElemwise, IsBoolean, repr='<='): pass
 
 # IfThenElse
 class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='(if {test} then {iftrue} else {iffalse})'): pass

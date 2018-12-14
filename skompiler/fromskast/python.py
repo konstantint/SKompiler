@@ -35,7 +35,8 @@ __all__ = ['translate']
 import ast
 import numpy as np
 from sklearn.utils.extmath import softmax
-from ..ast import ASTProcessor, USub, Identifier, NumberConstant
+from ..ast import USub, Identifier, NumberConstant, IsBoolean
+from ._common import ASTProcessor, StandardOps
 
 _linearg = dict(lineno=1, col_offset=0) # Most Python AST nodes require these
 
@@ -85,7 +86,7 @@ def _is(node):
     "Shorthand for defining methods in PythonASTWriter (see code below)"
     return lambda self, x: node
 
-class PythonASTWriter(ASTProcessor):
+class PythonASTWriter(ASTProcessor, StandardOps):
     """
     An AST processor, which translates a given SKAST node to a Python AST.
 
@@ -125,24 +126,22 @@ class PythonASTWriter(ASTProcessor):
                                                ctx=ast.Load(), **_linearg) for row in mat.value], ctx=ast.Load(), **_linearg)]
         return result
 
-    def UnaryFunc(self, call):
-        if isinstance(call.op, USub):
-            return ast.UnaryOp(op=self(call.op), operand=self(call.arg), **_linearg)
+    def UnaryFunc(self, node, **kw):
+        if isinstance(node.op, USub):
+            return ast.UnaryOp(op=self(node.op), operand=self(node.arg), **_linearg)
         else:
-            return ast.Call(func=self(call.op), args=[self(call.arg)], keywords=[], **_linearg)
+            return ast.Call(func=self(node.op), args=[self(node.arg)], keywords=[], **_linearg)
 
-    def BinOp(self, op):
-        return ast.BinOp(op=self(op.op),
-                         left=self(op.left),
-                         right=self(op.right),
-                         **_linearg)
+    def BinOp(self, node, **kw):
+        op, left, right = self(node.op), self(node.left), self(node.right)
+        if isinstance(node.op, IsBoolean):
+            return ast.Compare(left=left, ops=[op], comparators=[right], **_linearg)
+        else:
+            return ast.BinOp(op=op, left=left, right=right, **_linearg)
 
     def IfThenElse(self, node):
         return ast.IfExp(test=self(node.test), body=self(node.iftrue), orelse=self(node.iffalse), **_linearg)
     
-    def CompareBinOp(self, op):
-        return ast.Compare(left=self(op.left), ops=[self(op.op)], comparators=[self(op.right)], **_linearg)
-
     def Let(self, let):
         code = [ast.Assign(targets=[ast.Name(id='_def_' + defn.name, ctx=ast.Store(), **_linearg)],
                            value=self(defn.body), **_linearg) for defn in let.defs]

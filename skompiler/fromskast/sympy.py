@@ -3,8 +3,8 @@ SKompiler: Generate Sympy expressions from SKAST.
 """
 import sympy as sp
 from sklearn.utils.extmath import softmax
-from ..ast import ASTProcessor, Mul, Elemwise
-from ._common import is_, StandardArithmetics, LazyLet
+from ..ast import IsElemwise, Mul
+from ._common import ASTProcessor, is_, StandardArithmetics, LazyLet
 
 def translate(node, dialect=None, true_argmax=True, assign_to='y', component=None, lambdify_inputs_str='x', **kw):
     """Translates SKAST to a Sympy expression and optionally generates code from it.
@@ -122,7 +122,7 @@ class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
     def UnaryFunc(self, node):
         arg = self(node.arg)
         op = self(node.op)
-        if isinstance(arg, sp.MatrixBase) and isinstance(node.op, Elemwise):
+        if isinstance(arg, sp.MatrixBase) and isinstance(node.op, IsElemwise):
             if arg.shape[1] != 1:
                 raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
             return sp.ImmutableMatrix([op(arg[i]) for i in range(len(arg))])
@@ -133,7 +133,7 @@ class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
         left = self(node.left)
         right = self(node.right)
         op = self(node.op)
-        if isinstance(left, sp.MatrixBase) and isinstance(right, sp.MatrixBase) and isinstance(node.op, Elemwise):
+        if isinstance(left, sp.MatrixBase) and isinstance(right, sp.MatrixBase) and isinstance(node.op, IsElemwise):
             if left.shape != right.shape:
                 raise ValueError("Shapes of the arguments do not match")
             if left.shape[1] != 1:

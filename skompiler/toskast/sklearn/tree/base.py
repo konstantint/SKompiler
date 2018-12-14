@@ -2,8 +2,7 @@
 Decision trees to SKAST
 """
 import numpy as np
-from ....ast import IfThenElse, NumberConstant, VectorConstant, IndexedIdentifier, \
-                    CompareBinOp, LtEq, VectorIdentifier
+from ....ast import IfThenElse, NumberConstant, VectorConstant, IndexedIdentifier, BinOp, LtEq, VectorIdentifier
 
 
 def decision_tree(tree, inputs, method="predict"):
@@ -95,6 +94,6 @@ class TreeWalker:
             ft = self.tree.feature[node_id]
             if ft < 0 or ft >= self.tree.n_features:
                 raise ValueError("Invalid feature value for node {0}".format(node_id))
-            return IfThenElse(CompareBinOp(LtEq(), self.features[ft], NumberConstant(self.tree.threshold[node_id].item())),
+            return IfThenElse(BinOp(LtEq(), self.features[ft], NumberConstant(self.tree.threshold[node_id].item())),
                               self.walk(self.tree.children_left[node_id]),
                               self.walk(self.tree.children_right[node_id]))

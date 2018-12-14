@@ -5,8 +5,7 @@ from functools import reduce
 import warnings
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ASTProcessor
-from ._common import StandardArithmetics, VectorsAsLists, LazyLet, is_, prepare_assign_to
+from ._common import ASTProcessor, StandardArithmetics, VectorsAsLists, LazyLet, is_, prepare_assign_to
 from ._sqla_multistage import translate as translate_multistage
 
 def translate(node, dialect=None, assign_to='y', component=None,

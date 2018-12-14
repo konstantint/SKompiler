@@ -1,8 +1,72 @@
 """
-Functions, useful within multiple ASTProcessor implementations
+Base class for AST processors and functions, useful within multiple implementations
 """
+#pylint: disable=not-callable
 from itertools import count
-from ..ast import inline_definitions, IndexedIdentifier, NumberConstant, Exp, Elemwise
+from functools import reduce
+from ..ast import AST_NODES, inline_definitions, IndexedIdentifier, NumberConstant, Exp, BinOp, IsElemwise
+
+
+class ASTProcessorMeta(type):
+    """A metaclass, which checks that the class defines methods for all known AST nodes.
+       This is useful to verify SKAST processor implementations for completeness."""
+    
+    def __new__(mcs, name, bases, dct):
+        if name != 'ASTProcessor':
+            # This way the verification applies to all subclasses of ASTProcessor
+            unimplemented = AST_NODES.difference(dct.keys())
+            # Maybe the methods are implemented in one of the base classes?
+            for base_cls in bases:
+                unimplemented.difference_update(dir(base_cls))
+            if unimplemented:
+                raise ValueError(("Class {0} does not implement all the required ASTParser methods. "
+                                  "Unimplemented methods: {1}").format(name, ', '.join(unimplemented)))
+        return super().__new__(mcs, name, bases, dct)
+
+
+class ASTProcessor(object, metaclass=ASTProcessorMeta):
+    """
+    The class hides the need to specify ASTProcessorMeta metaclass
+    """
+
+    def __call__(self, node, **kw):
+        return getattr(self, node.__class__.__name__)(node, **kw)
+
+class StandardOps:
+    """Common implementation for BinOp, CompareBinOp, UnaryFunc and Let"""
+
+    def BinOp(self, node, **kw):
+        """Most common implementation for BinOp or CompareBinOp,
+        If the arguments are lists and the op is elemwise, applies
+        the operation elementwise and returns a list."""
+
+        left = self(node.left, **kw)
+        right = self(node.right, **kw)
+        op = self(node.op, **kw)
+        if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(node.op, IsElemwise):
+            return op(left, right)
+        if not isinstance(left, list) or not isinstance(right, list):
+            raise ValueError("Elementwise operations requires both operands to be lists")
+        if len(left) != len(right):
+            raise ValueError("Sizes of the arguments do not match")
+        return [op(l, r) for l, r in zip(left, right)]
+
+    CompareBinOp = BinOp
+
+    def UnaryFunc(self, node, **kw):
+        op, arg = self(node.op, **kw), self(node.arg, **kw) 
+        if not isinstance(node.op, IsElemwise) or not isinstance(arg, list):
+            return op(arg)
+        else:
+            return [op(a) for a in arg]
+    
+    def LFold(self, node, **kw):
+        if len(node.elems == 0):
+            raise ValueError("LFold expects at least one element")
+        elif len(node.elems == 1):
+            return self(node.elems[0], **kw)
+        else: 
+            return reduce(lambda x, y: self(BinOp(node.op, x, y)), node.elems)
 
 def is_(val):
     return lambda self, node: val
@@ -16,35 +80,10 @@ def tolist(x):
 def not_implemented(self, node, *args, **kw):
     raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
 
-def bin_op(self, node, **kw):
-    """Most common implementation for BinOp or CompareBinOp,
-       If the arguments are lists and the op is Elemwise, applies
-       the operation elementwise and returns a list."""
-    left = self(node.left, **kw)
-    right = self(node.right, **kw)
-    op = self(node.op, **kw)
-    if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(node.op, Elemwise):
-        return op(left, right)
-    if not isinstance(left, list) or not isinstance(right, list):
-        raise ValueError("Elementwise operations requires both operands to be lists")
-    if len(left) != len(right):
-        raise ValueError("Sizes of the arguments do not match")
-    return [op(l, r) for l, r in zip(left, right)]
 
-def unary_func(self, node, **kw):
-    "Common implementation for UnaryFunc"
-    op, arg = self(node.op, **kw), self(node.arg, **kw) 
-    if not isinstance(node.op, Elemwise) or not isinstance(arg, list):
-        return op(arg)
-    else:
-        return [op(a) for a in arg]
-
-#pylint: disable=not-callable
 class LazyLet:
     """
-    A partial implementation of an AST processor,
-    providing a "lazy" handling of Let expressions, where
-    we simply expand the definitions and then proceed as normal.
+    Default implementation of Let: expand the definitions and proceed as normal.
     """
 
     Reference = Definition = not_implemented
@@ -54,7 +93,7 @@ class LazyLet:
         return self(inline_definitions(node))
 
 
-class VectorsAsLists:
+class VectorsAsLists(StandardOps):
     """A partial implementation of an AST processor,
     which assumes that:
         - all vectors are implemented as lists,
@@ -66,9 +105,6 @@ class VectorsAsLists:
     """
 
     _iif = not_implemented   # Must implement this method in subclasses
-
-    UnaryFunc = unary_func
-    BinOp = CompareBinOp = bin_op
 
     def VectorIdentifier(self, id):
         return [self(IndexedIdentifier(id.id, i, id.size)) for i in range(id.size)]
@@ -96,7 +132,7 @@ class VectorsAsLists:
                 raise ValueError("Mixed types in IfThenElse expressions are not supported")
             return self._iif(test, iftrue, iffalse)
 
-class StandardArithmetics:
+class StandardArithmetics(StandardOps):
     """A partial implementation of an AST processor,
     which assimes that:
         - all binary and unary operations are interpreted as lambda functions.
@@ -104,8 +140,6 @@ class StandardArithmetics:
         - sigmoid can be expressed in terms of Exp as usual.
     """
 
-    UnaryFunc = unary_func
-    BinOp = CompareBinOp = bin_op
     Mul = is_(lambda x, y: x * y)
     Div = is_(lambda x, y: x / y)
     Add = is_(lambda x, y: x + y)

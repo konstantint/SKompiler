@@ -105,7 +105,7 @@ class PythonASTProcessor:
     def Compare(self, cmp, **kw):
         if len(cmp.comparators) != 1 or len(cmp.ops) != 1:
             raise ValueError("Only one-element comparison expressions are supported")
-        return CompareBinOp(self(cmp.ops[0], **kw), self(cmp.left, **kw), self(cmp.comparators[0], **kw))
+        return BinOp(self(cmp.ops[0], **kw), self(cmp.left, **kw), self(cmp.comparators[0], **kw))
     
     def List(self, lst, **kw):
         return MakeVector([self(el, **kw) for el in lst.elts])

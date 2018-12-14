@@ -6,8 +6,7 @@ from collections import OrderedDict
 from itertools import product, chain, takewhile, count
 import re
 import numpy as np
-from ..ast import ASTProcessor
-from ._common import is_, LazyLet, VectorsAsLists, id_generator
+from ._common import ASTProcessor, is_, LazyLet, VectorsAsLists, id_generator
 
 def translate(node, component=None, multistage=False, assign_to=None,
               multistage_subexpression_min_length=3):
