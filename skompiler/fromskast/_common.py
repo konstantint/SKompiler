@@ -134,6 +134,8 @@ class VectorsAsLists:
         return reduce(lambda x, y: _apply_bin_op(node.op, op, x, y),
                       [self(el, **kw) for el in node.elems])
 
+    VecSum = is_(lambda vec: reduce(lambda x, y: x + y, vec))
+
 
 class StandardArithmetics:
     """A partial implementation of an AST processor,

@@ -164,7 +164,6 @@ class SympyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     Log = is_(sp.log)
     Step = is_(sp.Heaviside)
     VecSum = is_(sum) # Yes, we return a Python summation here
-    VecSumNormalize = is_(lambda xs: xs/sum(xs))
     SKLearnSoftmax = is_(_sklearn_softmax)
 
     def ArgMax(self, _):

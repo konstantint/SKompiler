@@ -32,7 +32,7 @@ In general, use utils.evaluate to evaluate SKAST expressions.
 import ast
 import numpy as np
 from sklearn.utils.extmath import softmax
-from ..ast import USub, Identifier, NumberConstant, IsBoolean
+from ..ast import USub, Identifier, NumberConstant, IsBoolean, merge_let_scopes
 from ._common import ASTProcessor, StandardOps
 
 
@@ -55,7 +55,7 @@ def translate(node, dialect=None):
     >>> fn(x=[1, 2])
     array([2, 1])
     """
-    pyast = PythonASTWriter()(node)
+    pyast = PythonASTWriter()(merge_let_scopes(node))
     if dialect is None:
         return pyast
     elif dialect == 'lambda':
@@ -159,7 +159,6 @@ class PythonASTWriter(ASTProcessor, StandardOps):
     VecSum = _ident('__sum__')
     ArgMax = _ident('__argmax__')
     Sigmoid = _ident('__sigmoid__')
-    VecSumNormalize = _ident('__sum_normalize__')
     SKLearnSoftmax = _ident('__sklearn_softmax__')
 
     # Operators

@@ -199,7 +199,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
                 assign_to = excel_range('A1:*1')
             self.assign_to = assign_to if hasattr(assign_to, '__next__') else iter(assign_to)
             self.code = ExcelCode()
-            self.references = {}
+            self.references = [{}]
             self.temp_ids = id_generator()
 
     def Identifier(self, id):
@@ -243,6 +243,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     Sigmoid = is_fmt('(1/(1+EXP(-{0}))')
     MatVecProduct = is_(_matvecproduct)
     DotProduct = is_(_dotproduct)
+    VecSum = is_(_sum)
 
     def ArgMax(self, _):
         return self._argmax
@@ -252,9 +253,6 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
         max_var = self.possibly_add_named_subexpression(_max(xs))
         return _argmax(xs, max_var)
 
-    def VecSumNormalize(self, _):
-        return self._vecsumnormalize
-    
     def _vecsumnormalize(self, xs):
         xs = [self.possibly_add_named_subexpression(x) for x in xs]
         sum_var = self.possibly_add_named_subexpression(_sum(xs))
@@ -272,16 +270,19 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
         if not self.multistage:
             return StandardOps.Let(self, node)
         else:
+            self.references.append({})
             for defn in node.defs:
                 self.add_named_subexpression(self(defn.body), defn.name)
-            return self(node.body)
+            result = self(node.body)
+            self.references.pop()
+            return result
 
     def Reference(self, node):
         if not self.multistage:
             raise ValueError("Reference nodes are only supported in multi-stage code generation")
-        if node.name not in self.references:
+        if node.name not in self.references[-1]:
             raise ValueError("Undefined reference: {0}".format(node.name))
-        return self.references[node.name]
+        return self.references[-1][node.name]
     
     def possibly_add_named_subexpression(self, value):
         if self.multistage and len(value) >= self.multistage_subexpression_min_length:
@@ -304,7 +305,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
                 ref.append(next_output)
             if len(ref) == 1:
                 ref = ref[0]
-            self.references[name] = ref
+            self.references[-1][name] = ref
             return ref
         except StopIteration as ex:
             raise ValueError("The number of fields provided in the assign_to parameter"

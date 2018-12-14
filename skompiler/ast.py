@@ -162,7 +162,7 @@ class Step(ASTNode, IsElemwise, repr='step'): pass  # Heaviside step (x > 0)
 class Sigmoid(ASTNode, IsElemwise, repr='sigmoid'): pass
 
 # Some functions take vector arguments but do not distribute elementwise
-class VecSumNormalize(ASTNode, repr='sum_normalize'): pass
+class VecSum(ASTNode, repr='sum'): pass
 class ArgMax(ASTNode, repr='argmax'): pass
 class SKLearnSoftmax(ASTNode, repr='sklearn_softmax'): pass
 
@@ -206,7 +206,10 @@ class NumberConstant(ASTNode, fields='value', repr='{value}'): pass
 class VectorConstant(ASTNode, fields='value', repr='{value}'): pass
 class MatrixConstant(ASTNode, fields='value', repr='{value}'): pass
 
-# Variable definition
+# Variable definitions
+# NB: at the moment let-scopes do not capture the outside variables.
+# I.e. all the references inside the definitions and body of a let expressions are assumed to
+# refer to variables defined in this let scope
 class Let(ASTNode, fields='defs body'):
     def __str__(self):
         defs = ';\n'.join(str(d) for d in self.defs)
@@ -309,6 +312,8 @@ def inline_definitions(let_expr):
     if not isinstance(let_expr, Let):
         raise ValueError("Let expression expected")
     
+    let_expr = merge_let_scopes(let_expr)
+    
     defs = {}
     for defn in let_expr.defs:
         defs[defn.name] = substitute_references(defn.body, defs)
@@ -342,6 +347,7 @@ class LetCollector:
                 raise ValueError("Undefined reference: {0}".format(node.name))
             return replace(node, name='{0}{1}'.format(self.scopes[-1], node.name))
         return node
+
 
 def merge_let_scopes(expr):
     """

@@ -116,7 +116,6 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics, VectorsAs
     Log = is_(sa.func.log)
     Step = is_(_step)
     VecSum = is_(_sum)
-    VecSumNormalize = is_(_vecsumnormalize)
     SKLearnSoftmax = is_(_sklearn_softmax)
     ArgMax = is_(_argmax)
 

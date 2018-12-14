@@ -5,7 +5,7 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ArgMax, VecSumNormalize, SKLearnSoftmax, IsElemwise
+from ..ast import ArgMax, SKLearnSoftmax, IsElemwise, VecSum
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
                      not_implemented, prepare_assign_to, id_generator
 
@@ -78,6 +78,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
             from_obj.key_ = from_obj.columns[key_column]
         self.from_obj = from_obj
         self.temp_ids = id_generator()
+        self.references = [{}]
     
     def Identifier(self, id):
         return Result([sa.column(id.id)], self.from_obj)
@@ -111,15 +112,15 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
         arg = self(node.arg)
         if isinstance(node.op, ArgMax):
             return self._argmax(arg)
-        elif isinstance(node.op, VecSumNormalize):
-            return self._vecsumnormalize(arg)
         elif isinstance(node.op, SKLearnSoftmax):
             return self._sklearn_softmax(arg)
+        elif isinstance(node.op, VecSum):
+            return self._vecsum(arg)
         else:
             op = self(node.op)
             return Result([op(el) for el in arg.cols], arg.from_obj)
 
-    ArgMax = VecSumNormalize = SKLearnSoftmax = not_implemented
+    ArgMax = VecSumNormalize = VecSum = SKLearnSoftmax = not_implemented
 
     def BinOp(self, node, **kw):
         left, right, op = self(node.left), self(node.right), self(node.op)
@@ -128,7 +129,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
         elif len(left.cols) != len(right.cols):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))
         return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
-    
+
     def MakeVector(self, vec):
         result = []
         tbls = set()
@@ -155,6 +156,19 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
     Step = is_(_step)
 
     # ------ The actual "multi-stage" logic -----
+    def Let(self, node, **kw):
+        self.references.append({})
+        for defn in node.defs:
+            self.references[-1][defn.name] = self._make_cte(self(defn.body))
+        result = self(node.body)
+        self.references.pop()
+        return result
+
+    def Reference(self, node):
+        if node.name not in self.references[-1]:
+            raise ValueError("Undefined reference: {0}".format(node.name))
+        return self.references[-1][node.name]
+
     def _make_cte(self, result, col_names=None, key_label='__id__'):
         if col_names is None:
             col_names = ['f{0}'.format(i+1) for i in range(len(result.cols))]
@@ -190,6 +204,8 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
         return Result([col/sum_val.cols[0] for col in features.cols],
                       _merge(features.from_obj, sum_val.from_obj))
 
+    def _vecsum(self, result):
+        return Result([_sum(result.cols)], result.from_obj)
 
 # ------- SQLAlchemy "greatest" function
 # See https://docs.sqlalchemy.org/en/latest/core/compiler.html

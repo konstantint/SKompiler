@@ -1,9 +1,9 @@
 """
 SKLearn logistic regression to SKAST.
 """
-from skompiler.ast import UnaryFunc, Step, Sigmoid, ArgMax, VecSumNormalize, SKLearnSoftmax
+from skompiler.ast import UnaryFunc, Step, Sigmoid, ArgMax, SKLearnSoftmax
 from .base import linear_model
-from ..common import classifier
+from ..common import classifier, vecsumnormalize
 
 
 def logreg_binary(coef, intercept, inputs, method="predict_proba"):
@@ -62,7 +62,7 @@ def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict
         return UnaryFunc(ArgMax(), decision)
 
     if multi_class == 'ovr':
-        probs = UnaryFunc(VecSumNormalize(), UnaryFunc(Sigmoid(), decision))
+        probs = vecsumnormalize(UnaryFunc(Sigmoid(), decision), coef_matrix.shape[0])
     elif multi_class == 'multinomial':
         probs = UnaryFunc(SKLearnSoftmax(), decision)
     else:
