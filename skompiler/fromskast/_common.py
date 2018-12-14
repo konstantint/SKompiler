@@ -7,6 +7,19 @@ from functools import reduce
 from ..ast import AST_NODES, inline_definitions, IndexedIdentifier, NumberConstant, Exp, BinOp, IsElemwise
 
 
+def is_(val):
+    return lambda self, node: val
+
+def tolist(x):
+    if hasattr(x, 'tolist'):
+        return x.tolist()
+    else:
+        return list(x)
+
+def not_implemented(self, node, *args, **kw):
+    raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
+
+
 class ASTProcessorMeta(type):
     """A metaclass, which checks that the class defines methods for all known AST nodes.
        This is useful to verify SKAST processor implementations for completeness."""
@@ -32,68 +45,48 @@ class ASTProcessor(object, metaclass=ASTProcessorMeta):
     def __call__(self, node, **kw):
         return getattr(self, node.__class__.__name__)(node, **kw)
 
+def _apply_bin_op(op_node, op, left, right):
+    if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(op_node, IsElemwise):
+        return op(left, right)
+    if not isinstance(left, list) or not isinstance(right, list):
+        raise ValueError("Elementwise operations requires both operands to be lists")
+    if len(left) != len(right):
+        raise ValueError("Sizes of the arguments do not match")
+    return [op(l, r) for l, r in zip(left, right)]
+
 class StandardOps:
-    """Common implementation for BinOp, CompareBinOp, UnaryFunc and Let"""
+    """Common implementation for BinOp, UnaryFunc, LFold and Let"""
 
     def BinOp(self, node, **kw):
-        """Most common implementation for BinOp or CompareBinOp,
+        """Most common implementation for BinOp,
         If the arguments are lists and the op is elemwise, applies
         the operation elementwise and returns a list."""
 
         left = self(node.left, **kw)
         right = self(node.right, **kw)
         op = self(node.op, **kw)
-        if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(node.op, IsElemwise):
-            return op(left, right)
-        if not isinstance(left, list) or not isinstance(right, list):
-            raise ValueError("Elementwise operations requires both operands to be lists")
-        if len(left) != len(right):
-            raise ValueError("Sizes of the arguments do not match")
-        return [op(l, r) for l, r in zip(left, right)]
-
-    CompareBinOp = BinOp
+        return _apply_bin_op(node.op, op, left, right)
 
     def UnaryFunc(self, node, **kw):
-        op, arg = self(node.op, **kw), self(node.arg, **kw) 
+        op, arg = self(node.op, **kw), self(node.arg, **kw)
         if not isinstance(node.op, IsElemwise) or not isinstance(arg, list):
             return op(arg)
         else:
             return [op(a) for a in arg]
     
     def LFold(self, node, **kw):
-        if len(node.elems == 0):
+        # Standard implementation simply expands LFold into a sequence of BinOps and then calls itself
+        if not node.elems:
             raise ValueError("LFold expects at least one element")
-        elif len(node.elems == 1):
-            return self(node.elems[0], **kw)
-        else: 
-            return reduce(lambda x, y: self(BinOp(node.op, x, y)), node.elems)
-
-def is_(val):
-    return lambda self, node: val
-
-def tolist(x):
-    if hasattr(x, 'tolist'):
-        return x.tolist()
-    else:
-        return list(x)
-
-def not_implemented(self, node, *args, **kw):
-    raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
-
-
-class LazyLet:
-    """
-    Default implementation of Let: expand the definitions and proceed as normal.
-    """
+        return self(reduce(lambda x, y: BinOp(node.op, x, y), node.elems), **kw)
+    
+    def Let(self, node, **kw):
+        "Lazy implementation of the 'Let' node. Simply substitutes variables and proceeds as normal."
+        return self(inline_definitions(node), **kw)
 
     Reference = Definition = not_implemented
 
-    def Let(self, node):
-        "Lazy implementation of the 'Let' node. Simply substitutes variables and proceeds as normal."
-        return self(inline_definitions(node))
-
-
-class VectorsAsLists(StandardOps):
+class VectorsAsLists:
     """A partial implementation of an AST processor,
     which assumes that:
         - all vectors are implemented as lists,
@@ -131,8 +124,18 @@ class VectorsAsLists(StandardOps):
             if isinstance(iffalse, list):
                 raise ValueError("Mixed types in IfThenElse expressions are not supported")
             return self._iif(test, iftrue, iffalse)
+    
+    def LFold(self, node, **kw):
+        "If we know vectors are lists, we can improve LFold to avoid deep recursions"
 
-class StandardArithmetics(StandardOps):
+        if not node.elems:
+            raise ValueError("LFold expects at least one element")
+        op = self(node.op, **kw)
+        return reduce(lambda x, y: _apply_bin_op(node.op, op, x, y),
+                      [self(el, **kw) for el in node.elems])
+
+
+class StandardArithmetics:
     """A partial implementation of an AST processor,
     which assimes that:
         - all binary and unary operations are interpreted as lambda functions.

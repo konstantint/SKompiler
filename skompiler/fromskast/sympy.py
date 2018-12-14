@@ -4,7 +4,8 @@ SKompiler: Generate Sympy expressions from SKAST.
 import sympy as sp
 from sklearn.utils.extmath import softmax
 from ..ast import IsElemwise, Mul
-from ._common import ASTProcessor, is_, StandardArithmetics, LazyLet
+from ._common import ASTProcessor, is_, StandardOps, StandardArithmetics
+
 
 def translate(node, dialect=None, true_argmax=True, assign_to='y', component=None, lambdify_inputs_str='x', **kw):
     """Translates SKAST to a Sympy expression and optionally generates code from it.
@@ -78,7 +79,7 @@ def _sklearn_softmax(vec):
     smax = [sp.exp(vec[i] - sp.Max(*vec)) for i in range(len(vec))]
     return sp.ImmutableMatrix([smax[i] / sum(smax) for i in range(len(smax))])
 
-class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
+class SympyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     """A SK AST processor, producing a Sympy expression"""
 
     def __init__(self, true_argmax=False):
@@ -119,7 +120,7 @@ class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
     def MakeVector(self, vec):
         return sp.ImmutableMatrix([self(el) for el in vec.elems])
 
-    def UnaryFunc(self, node):
+    def UnaryFunc(self, node, **kw):
         arg = self(node.arg)
         op = self(node.op)
         if isinstance(arg, sp.MatrixBase) and isinstance(node.op, IsElemwise):
@@ -129,7 +130,7 @@ class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
         else:
             return op(arg)
 
-    def BinOp(self, node):
+    def BinOp(self, node, **kw):
         left = self(node.left)
         right = self(node.right)
         op = self(node.op)

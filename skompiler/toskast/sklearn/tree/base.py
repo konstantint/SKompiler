@@ -5,7 +5,7 @@ import numpy as np
 from ....ast import IfThenElse, NumberConstant, VectorConstant, IndexedIdentifier, BinOp, LtEq, VectorIdentifier
 
 
-def decision_tree(tree, inputs, method="predict"):
+def decision_tree(tree, inputs, method="predict", value_transform=None):
     """
     Creates a SKAST expression corresponding to a given SKLearn Tree object.
 
@@ -14,6 +14,11 @@ def decision_tree(tree, inputs, method="predict"):
        inputs:  a list of AST nodes to be used as inputs to the model.
        method:  'predict' (for classifier and regressor models),
                 'predict_proba' or 'predict_log_proba' (for classifier models)
+        
+       value_transform:  If not None, the tree values are processed using the given operator.
+                This way we may propagate constant operations into trees
+                (e.g. instead of const * decision_tree(...) you may just have a
+                 decision tree which outputs const * value)
     
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.tree import DecisionTreeClassifier
@@ -23,7 +28,6 @@ def decision_tree(tree, inputs, method="predict"):
     >>> print(decision_tree(m.tree_, ['a','b','c','d'], method='predict_proba'))
     (if (d <= 0.80...) then [1. 0. 0.] else (if (d <= 1.75) then [0... 0.90... 0.09...] else [0... 0.02... 0.97...]))
     """
-    features = inputs
 
     v = tree.value[:, 0, :]
     if v.shape[1] == 1:
@@ -41,8 +45,10 @@ def decision_tree(tree, inputs, method="predict"):
                 v = np.log(v)
             elif method != "predict_proba":
                 raise ValueError("Invalid method: {0}".format(method))
-    
-    return TreeWalker(tree, features, v).walk()
+
+    if value_transform:
+        v = value_transform(v)
+    return TreeWalker(tree, inputs, v).walk()
 
 
 class TreeWalker:

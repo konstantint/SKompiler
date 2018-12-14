@@ -5,8 +5,9 @@ from functools import reduce
 import warnings
 import numpy as np
 import sqlalchemy as sa
-from ._common import ASTProcessor, StandardArithmetics, VectorsAsLists, LazyLet, is_, prepare_assign_to
+from ._common import ASTProcessor, StandardOps, StandardArithmetics, VectorsAsLists, is_, prepare_assign_to
 from ._sqla_multistage import translate as translate_multistage
+
 
 def translate(node, dialect=None, assign_to='y', component=None,
               multistage=False, multistage_key_column='id', multistage_from_obj='data'):
@@ -86,7 +87,7 @@ def _argmax(xs):
                    else_=len(xs)-1)
 
 
-class SQLAlchemyWriter(ASTProcessor, StandardArithmetics, VectorsAsLists, LazyLet):
+class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics, VectorsAsLists):
     """A SK AST processor, producing a SQLAlchemy expression (or a list of those)"""
     def __init__(self, positive_infinity=float(np.finfo('float64').max), negative_infinity=float(np.finfo('float64').min)):
         self.positive_infinity = positive_infinity

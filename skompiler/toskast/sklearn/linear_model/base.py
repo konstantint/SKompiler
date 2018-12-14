@@ -5,6 +5,7 @@ import numpy as np
 from skompiler.ast import BinOp, DotProduct, VectorConstant,\
                           Add, NumberConstant, MatrixConstant, MatVecProduct, MakeVector
 
+
 def linear_model(coef, intercept, inputs):
     """
     Linear regression.

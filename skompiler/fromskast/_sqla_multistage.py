@@ -5,8 +5,9 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct, IsElemwise
-from ._common import ASTProcessor, StandardArithmetics, LazyLet, is_, tolist, not_implemented, prepare_assign_to, id_generator
+from ..ast import ArgMax, VecSumNormalize, SKLearnSoftmax, IsElemwise
+from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
+                     not_implemented, prepare_assign_to, id_generator
 
 
 def translate(expr, assign_to=None, from_obj='data', key_column='id', component=None):
@@ -24,7 +25,6 @@ def translate(expr, assign_to=None, from_obj='data', key_column='id', component=
         result = result._replace(cols=[col.label(lbl) for col, lbl in zip(result.cols, assign_to)])
     
     return sa.select(result.cols, from_obj=result.from_obj)
-
 
 def _max(xs):
     return reduce(greatest, xs)
@@ -59,7 +59,7 @@ def _merge(tbl1, tbl2):
 
 Result = namedtuple('Result', 'cols from_obj')
 
-class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
+class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics):
     """A SK AST processor, producing a SQLAlchemy "multistage" expression.
        The interpretation of each node is a tuple, containing a list of column expressions and a from_obj,
        where these columns must be queried from."""
@@ -107,7 +107,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
     def MatrixConstant(self, mtx):
         return Result([[self._number_constant(v) for v in tolist(row)] for row in mtx.value], None)
 
-    def UnaryFunc(self, node):
+    def UnaryFunc(self, node, **kw):
         arg = self(node.arg)
         if isinstance(node.op, ArgMax):
             return self._argmax(arg)
@@ -121,7 +121,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
 
     ArgMax = VecSumNormalize = SKLearnSoftmax = not_implemented
 
-    def BinOp(self, node):
+    def BinOp(self, node, **kw):
         left, right, op = self(node.left), self(node.right), self(node.op)
         if not isinstance(node.op, IsElemwise):
             return Result(op(left.cols, right.cols), _merge(left.from_obj, right.from_obj))
@@ -129,8 +129,6 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))
         return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
     
-    CompareBinOp = BinOp
-
     def MakeVector(self, vec):
         result = []
         tbls = set()

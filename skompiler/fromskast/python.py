@@ -29,14 +29,12 @@ writes the result value to the __result__ global. You may only exec this code:
 
 In general, use utils.evaluate to evaluate SKAST expressions.
 """
-
-__all__ = ['translate']
-
 import ast
 import numpy as np
 from sklearn.utils.extmath import softmax
 from ..ast import USub, Identifier, NumberConstant, IsBoolean
 from ._common import ASTProcessor, StandardOps
+
 
 _linearg = dict(lineno=1, col_offset=0) # Most Python AST nodes require these
 
@@ -138,23 +136,21 @@ class PythonASTWriter(ASTProcessor, StandardOps):
             return ast.Compare(left=left, ops=[op], comparators=[right], **_linearg)
         else:
             return ast.BinOp(op=op, left=left, right=right, **_linearg)
-
+    
     def IfThenElse(self, node):
         return ast.IfExp(test=self(node.test), body=self(node.iftrue), orelse=self(node.iffalse), **_linearg)
     
-    def Let(self, let):
+    def Let(self, node, **kw):
         code = [ast.Assign(targets=[ast.Name(id='_def_' + defn.name, ctx=ast.Store(), **_linearg)],
-                           value=self(defn.body), **_linearg) for defn in let.defs]
+                           value=self(defn.body), **_linearg) for defn in node.defs]
         # Evaluate the expression body into a "__result__" variable
         code.append(
             ast.Assign(targets=[ast.Name(id='__result__', ctx=ast.Store(), **_linearg)],
-                       value=self(let.body), **_linearg))
+                       value=self(node.body), **_linearg))
         return ast.Module(body=code)
 
     def Reference(self, ref):
         return ast.Name(id='_def_' + ref.name, ctx=ast.Load(), **_linearg)
-
-    Definition = None
 
     # Functions
     Exp = _ident('__exp__')

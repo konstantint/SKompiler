@@ -154,7 +154,7 @@ class IsElemwise: pass
 class USub(ASTNode, IsElemwise, repr='-'): pass     # Unary minus operator
 class Exp(ASTNode, IsElemwise, repr='exp'): pass
 class Log(ASTNode, IsElemwise, repr='log'): pass
-class Step(ASTNode, IsElemwise, repr='step'): pass  # Heaviside step (x >= 0)
+class Step(ASTNode, IsElemwise, repr='step'): pass  # Heaviside step (x > 0)
 class Sigmoid(ASTNode, IsElemwise, repr='sigmoid'): pass
 
 # Some functions take vector arguments but do not distribute elementwise

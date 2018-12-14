@@ -18,6 +18,7 @@ from .ensemble.forest import random_forest_classifier, random_forest_regressor
 from .ensemble.gradient_boosting import gradient_boosting_classifier, gradient_boosting_regressor
 from ...ast import VectorIdentifier, Identifier
 
+
 @singledispatch
 def translate(model, inputs='x', method='predict'):
     """

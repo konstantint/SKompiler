@@ -1,9 +1,10 @@
 """
 Decision trees to SKAST
 """
-from functools import reduce
 from ..tree.base import decision_tree
-from ....ast import BinOp, MakeVector, NumberConstant, Add, Mul
+from ..common import sum_
+from ....ast import MakeVector, NumberConstant
+
 
 def gradient_boosting_classifier(model, inputs, method="decision_function"):
     """
@@ -16,12 +17,12 @@ def gradient_boosting_classifier(model, inputs, method="decision_function"):
 
     if method != "decision_function":
         raise NotImplementedError("Only decision_function is implemented for gradient boosting models so far")
-    
-    tree_exprs = [MakeVector([decision_tree(estimator.tree_, inputs, method="predict") for estimator in iteration])
+
+    tree_exprs = [MakeVector([decision_tree(estimator.tree_, inputs, method="predict", value_transform=lambda v: v * model.learning_rate)
+                              for estimator in iteration])
                   for iteration in model.estimators_]
-    tree_sum = reduce(lambda x, y: BinOp(Add(), x, y), tree_exprs)
-    tree_sum = BinOp(Mul(), tree_sum, MakeVector([NumberConstant(model.learning_rate) for _ in range(model.n_classes_)]))
-    return BinOp(Add(), tree_sum, MakeVector([NumberConstant(prior) for prior in model.init_.priors]))
+    prior = MakeVector([NumberConstant(prior) for prior in model.init_.priors])
+    return sum_(tree_exprs + [prior])
 
 
 def gradient_boosting_regressor(model, inputs, method="decision_function"):
@@ -34,7 +35,7 @@ def gradient_boosting_regressor(model, inputs, method="decision_function"):
     if method != "decision_function":
         raise NotImplementedError("Only decision_function is implemented for gradient boosting models so far")
     
-    tree_exprs = [decision_tree(iteration[0].tree_, inputs, method="predict") for iteration in model.estimators_]
-    tree_sum = reduce(lambda x, y: BinOp(Add(), x, y), tree_exprs)
-    tree_sum = BinOp(Mul(), tree_sum, NumberConstant(model.learning_rate))
-    return BinOp(Add(), tree_sum, NumberConstant(model.init_.mean))
+    tree_exprs = [decision_tree(iteration[0].tree_, inputs, method="predict", value_transform=lambda v: v * model.learning_rate)
+                  for iteration in model.estimators_]
+    prior = NumberConstant(model.init_.mean)
+    return sum_(tree_exprs + [prior])

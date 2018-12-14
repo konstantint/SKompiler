@@ -1,8 +1,10 @@
 """
 SKLearn logistic regression to SKAST.
 """
-from skompiler.ast import UnaryFunc, Step, Sigmoid, Log, ArgMax, VecSumNormalize, SKLearnSoftmax
+from skompiler.ast import UnaryFunc, Step, Sigmoid, ArgMax, VecSumNormalize, SKLearnSoftmax
 from .base import linear_model
+from ..common import classifier
+
 
 def logreg_binary(coef, intercept, inputs, method="predict_proba"):
     """
@@ -29,12 +31,7 @@ def logreg_binary(coef, intercept, inputs, method="predict_proba"):
     if method == "predict":
         return UnaryFunc(Step(), decision)
 
-    prob = UnaryFunc(Sigmoid(), decision)
-    if method == "predict_proba":
-        return prob
-    elif method == "predict_log_proba":
-        return UnaryFunc(Log(), prob)
-    raise ValueError("Invalid method: " + method)
+    return classifier(UnaryFunc(Sigmoid(), decision), method)
 
     
 def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict_proba", multi_class='ovr'):
@@ -71,10 +68,5 @@ def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict
     else:
         raise ValueError("Invalid value of the multi_class argument: " + multi_class)
 
-    if method == "predict_proba":
-        return probs
-    elif method == "predict_log_proba":
-        return UnaryFunc(Log(), probs)
-    else:
-        raise ValueError("Invalid method: " + method)
+    return classifier(probs, method)
     

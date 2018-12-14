@@ -4,6 +4,7 @@ String to SKAST translator.
 import ast
 from .python import translate as from_python
 
+
 def translate(expr):
     """Convert a given (restricted) Python code string to a SK-AST.
        

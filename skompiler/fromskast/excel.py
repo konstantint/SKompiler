@@ -6,7 +6,7 @@ from collections import OrderedDict
 from itertools import product, chain, takewhile, count
 import re
 import numpy as np
-from ._common import ASTProcessor, is_, LazyLet, VectorsAsLists, id_generator
+from ._common import ASTProcessor, is_, StandardOps, VectorsAsLists, id_generator
 
 def translate(node, component=None, multistage=False, assign_to=None,
               multistage_subexpression_min_length=3):
@@ -178,7 +178,7 @@ class ExcelCode(OrderedDict):
         return pd.DataFrame([[f'={v}' for v in self.values()]],
                             columns=self.keys())
 
-class ExcelWriter(ASTProcessor, VectorsAsLists, LazyLet):
+class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     """A SK AST processor, producing an Excel expression (or a list of those)"""
 
     def __init__(self, multistage=False, assign_to=None, positive_infinity=float(np.finfo('float64').max),
@@ -269,7 +269,7 @@ class ExcelWriter(ASTProcessor, VectorsAsLists, LazyLet):
 
     def Let(self, node):
         if not self.multistage:
-            return LazyLet.Let(self, node)
+            return StandardOps.Let(self, node)
         else:
             for defn in node.defs:
                 self.add_named_subexpression(self(defn.body), defn.name)

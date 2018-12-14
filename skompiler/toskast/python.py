@@ -18,6 +18,7 @@ $b = (2 * $a)
 import ast
 from ..ast import *
 
+
 def translate(node):
     return PythonASTProcessor()(node)
 

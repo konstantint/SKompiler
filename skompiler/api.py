@@ -4,6 +4,7 @@ Wraps around the intricacies of the various toskast/fromskast pieces.
 """
 from .toskast.sklearn import translate as from_sklearn
 
+
 def skompile(method, inputs='x'):
     """
     Creates a SKAST expression from a given bound method of a fitted SKLearn model.
