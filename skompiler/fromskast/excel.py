@@ -8,6 +8,7 @@ import re
 import numpy as np
 from ._common import ASTProcessor, is_, StandardOps, VectorsAsLists, id_generator
 
+
 def translate(node, component=None, multistage=False, assign_to=None,
               multistage_subexpression_min_length=3):
     """Translates SKAST to an Excel formula (or a list of those, if the output should be a vector).
@@ -267,7 +268,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
         x_max = self.possibly_add_named_subexpression(_max(xs))
         return self._vecsumnormalize(['EXP({0}-{1})'.format(x, x_max) for x in xs])
 
-    def Let(self, node):
+    def Let(self, node, **kw):
         if not self.multistage:
             return StandardOps.Let(self, node)
         else:

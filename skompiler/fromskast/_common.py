@@ -189,4 +189,4 @@ def prepare_assign_to(assign_to, n_actual_targets):
 
 
 def id_generator(template='_tmp{0}', start=1):
-    return map(template.format, count(start))  # NB: Py3-specific
+    return map(template.format, count(start))

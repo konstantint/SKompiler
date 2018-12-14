@@ -17,10 +17,14 @@ Notes:
 (12.2 + (x * y[-5]))
 >>> expr = Let([Definition('z', expr)], BinOp(Add(), Reference('z'), NumberConstant(2)))
 >>> print(str(expr))
-$z = (12.2 + (x * y[-5]))
+{
+$z = (12.2 + (x * y[-5]));
 ($z + 2)
+}
 """
 #pylint: disable=protected-access,multiple-statements,too-few-public-methods,no-member
+from itertools import count
+
 
 # Each ASTNode registers its class name in this set
 AST_NODES = set([])
@@ -205,52 +209,50 @@ class MatrixConstant(ASTNode, fields='value', repr='{value}'): pass
 # Variable definition
 class Let(ASTNode, fields='defs body'):
     def __str__(self):
-        defs = '\n'.join(str(d) for d in self.defs)
-        return defs + '\n' + str(self.body)
+        defs = ';\n'.join(str(d) for d in self.defs)
+        return '{\n' + defs + ';\n' + str(self.body) + '\n}'
 
 class Definition(ASTNode, fields='name body', repr='${name} = {body}'): pass
 class Reference(ASTNode, fields='name', repr='${name}'): pass
 
 
 # --------------------- Utility functions -----------------------
-def map_list(node_list, fn):
+def map_list(node_list, fn, call_on_enter=False, call_on_exit=True):
     new_list = []
     changed = False
     for node in node_list:
-        new_node = fn(node)
+        new_node = map_tree(node, fn, call_on_enter, call_on_exit)
         if new_node is not node:
             changed = True
         new_list.append(new_node)
     return new_list if changed else node_list
 
 
-def map_tree(node, fn, preorder=False):
+def map_tree(node, fn, call_on_enter=False, call_on_exit=True):
     """Applies a function to each node in the tree.
 
     Args:
-        fn: function, which must accept a node and return a node.
+        fn: function, which must accept (node, is_entering) and return a node.
     
     Kwargs:
-        preorder:  When True, first invokes the function, then descends into the leaves
-                  (of a potentially different node). In other words, processes substitutions.
-                   When False, first descends, then calls the function.
+        call_on_enter:  Invoke the function (potentially replacing the node) every time before entering the node.
+        call_on_exit:   Invoke the function (potentially replacing the node) every time before leavin the node.
     """
-    if preorder: node = fn(node)
+    if call_on_enter: node = fn(node, True)
 
     updates = {}
     for fname, fval in node:
         if isinstance(fval, ASTNode):
-            new_val = map_tree(fval, fn)
+            new_val = map_tree(fval, fn, call_on_enter, call_on_exit)
         elif fname in ['elems', 'defs']:  # Special case for MakeVector and Let nodes
-            new_val = map_list(fval, fn)
+            new_val = map_list(fval, fn, call_on_enter, call_on_exit)
         else:
             new_val = fval
         if new_val is not fval:
             updates[fname] = new_val
     node = replace(node, **updates)
-    
-    if not preorder: node = fn(node)
 
+    if call_on_exit: node = fn(node, False)
     return node
 
 def substitute_references(node, definitions):
@@ -276,7 +278,7 @@ def substitute_references(node, definitions):
     >>> assert new_expr is not expr
     >>> assert new_expr.right is expr.right
     """
-    def fn(node):
+    def fn(node, _):
         if isinstance(node, Reference):
             if node.name not in definitions:
                 raise ValueError("Unknown variable reference: " + node.name)
@@ -285,7 +287,7 @@ def substitute_references(node, definitions):
         else:
             return node
 
-    return map_tree(node, fn, preorder=False)
+    return map_tree(node, fn, call_on_enter=False, call_on_exit=True)
 
 
 def inline_definitions(let_expr):
@@ -312,6 +314,67 @@ def inline_definitions(let_expr):
         defs[defn.name] = substitute_references(defn.body, defs)
     
     return substitute_references(let_expr.body, defs)
+
+
+# --------- Let expression extraction ---------- #
+def _scope_id_gen():
+    yield ''  # Do not mangle the scope of the first let we find
+    yield from map('_{0}'.format, count())
+
+class LetCollector:
+    def __init__(self):
+        self.definitions = []
+        self.scopes = []
+        self.temp_ids = _scope_id_gen()
+
+    def __call__(self, node, entering):
+        if isinstance(node, Let):
+            if entering:
+                name = next(self.temp_ids)
+                self.scopes.append(name)
+            else:
+                self.scopes.pop()
+                return node.body
+        elif isinstance(node, Definition) and not entering:
+            self.definitions.append(replace(node, name='{0}{1}'.format(self.scopes[-1], node.name)))
+        elif isinstance(node, Reference) and not entering:
+            if not self.scopes:
+                raise ValueError("Undefined reference: {0}".format(node.name))
+            return replace(node, name='{0}{1}'.format(self.scopes[-1], node.name))
+        return node
+
+def merge_let_scopes(expr):
+    """
+    Given an expression which may potentially contain Let subexpressions inside,
+    bubbles them all up and returns a single Let expression.
+    If the original expression contained no Let subexpressions, returns it as-is.
+
+    >>> from skompiler.toskast.string import translate as skast
+    >>> let1 = skast("x=1; y=2; x+y")   # 3
+    >>> let2 = skast("x=3; y=4; x+2*y") # 11
+    >>> let3 = skast("x=0; y=0; 3*x+y") # 20
+    >>> let3.defs[0].body=let1
+    >>> let3.defs[1].body=let2
+    >>> merged = merge_let_scopes(let3)
+    >>> print(merged)
+    {
+    $_0x = 1;
+    $_0y = 2;
+    $x = ($_0x + $_0y);
+    $_1x = 3;
+    $_1y = 4;
+    $y = ($_1x + (2 * $_1y));
+    ((3 * $x) + $y)
+    }
+    >>> print(inline_definitions(merged))
+    ((3 * (1 + 2)) + (3 + (2 * 4)))
+    """
+    lc = LetCollector()
+    expr = map_tree(expr, lc, True, True)
+    if not lc.definitions:
+        return expr
+    else:
+        return Let(lc.definitions, expr)
 
 
 # ---------- Helper functions for working with AST nodes
@@ -346,26 +409,3 @@ def replace(node, **kw):
         return new_node
     else:
         return node
-
-
-# ------------- Helper base class for defining AST processor classes
-class ASTProcessorMeta(type):
-    """A metaclass, which checks that the class defines methods for all known AST nodes.
-       This is useful to verify SKAST processor implementations for completeness."""
-    def __new__(mcs, name, bases, dct):
-        if name != 'ASTProcessor':
-            # This way the verification applies to all subclasses of ASTProcessor
-            unimplemented = AST_NODES.difference(dct.keys())
-            # Maybe the methods are implemented in one of the base classes?
-            for base_cls in bases:
-                unimplemented.difference_update(dir(base_cls))
-            if unimplemented:
-                raise ValueError(("Class {0} does not implement all the required ASTParser methods. "
-                                  "Unimplemented methods: {1}").format(name, ', '.join(unimplemented)))
-        return super().__new__(mcs, name, bases, dct)
-
-class ASTProcessor(object, metaclass=ASTProcessorMeta):
-    "The class hides the need to specify ASTProcessorMeta metaclass."
-
-    def __call__(self, node, **kw):
-        return getattr(self, node.__class__.__name__)(node, **kw)

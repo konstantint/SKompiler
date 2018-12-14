@@ -24,8 +24,10 @@ def translate(expr):
        ValueError: Subscripting named references is not supported
        >>> expr = translate("a=X; b=a+2; 12.4 * (a + b + y)")
        >>> print(str(expr))
-       $a = X
-       $b = ($a + 2)
+       {
+       $a = X;
+       $b = ($a + 2);
        (12.4 * (($a + $b) + y))
+       }
        """
     return from_python(ast.parse(expr))

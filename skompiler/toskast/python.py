@@ -10,9 +10,11 @@ Useful for debugging testing and simplistic parsing mostly:
 (12.4 * (X1[25.3] + Y))
 >>> expr = ast.parse("a=12+b; b=2*a; 12.4 * (X[25.3] + Y + 2*a*b)")
 >>> print(str(translate(expr)))
-$a = (12 + b)
-$b = (2 * $a)
+{
+$a = (12 + b);
+$b = (2 * $a);
 (12.4 * ((X[25.3] + Y) + ((2 * $a) * $b)))
+}
 '''
 #pylint: disable=wildcard-import,unused-wildcard-import,unused-argument
 import ast
