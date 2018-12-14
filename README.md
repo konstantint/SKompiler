@@ -125,56 +125,7 @@ The effect on the query size can be quite significant:
     len(expr.to('sqlalchemy/sqlite', multistage=True))
     > 2574
 
-The multi-stage translation is especially important if you need to generate Excel code, because Excel does not support formulas longer than 8196 characters. If you need to port complex models, splitting them up is therefore the only way. For fun's sake, let us work through an example.
-
-Suppose we have a decently complicated model, which would not fit into a cell as a single expression:
-
-    m = RandomForestClassifier(n_estimators=500, max_depth=10).fit(X, y)
-    import sys
-    sys.setrecursionlimit(10000)
-    len(skompile(m.predict).to('excel'))
-    > 934431
-
-How can we evaluate it via Excel? Start by copying our sample data to clipboard and pasting it into Excel:
-
-    df.to_clipboard()
-
-When I paste this into a new worksheet, the first row of the data occupies cells `C2`, `D2`, `E2` and `F2`. We need to take this information when compiling the model:
-
-    expr = skompile(m.predict, ['C2','D2','E2','F2'])
-
-Now let us generate a multistage Excel computation, putting the first intermediate result into the cell `H2`, the second into `I2`, etc along the row until whatever cell will take the final prediction output:
-
-    from skompiler.fromskast.excel import excel_row_generator
-    import sys
-    sys.setrecursionlimit(10000)
-
-    code = expr.to('excel', multistage=True, assign_to=excel_row_generator('H', 2))
-
-Note that we need to increase the system recursion limit in order to process large expressions. The resulting `code` object is a dictionary, mapping cell names to the corresponding expressions:
-
-    for k, v in code.items():
-        print(f'{k}={v[0:20]}... ({len(v)} bytes)')
-
-outputs a long-ish sequence of cells that we need to fill now in the second row:
-
-    H2=((((((((((((((((((((... (7965 bytes)
-    I2=((((((((((((((((((((... (7965 bytes)
-    ...
-    AZ2=((((((((((((((((((((... (6139 bytes)
-    BA2=MAX(AX2,AY2,AZ2)... (16 bytes)
-    BB2=IF(AX2=BA2,0,IF(AY2=... (29 bytes)
-
-We can use the clipboard to help us paste the formulas:
-    
-    formulas = pd.DataFrame({k: [f'={v}'] for k, v in code.items()})
-    formulas.to_clipboard()
-
-Now select the cell `G1` in the worksheet (right next to the data) and use the following keyboard incantation to paste and "drag" the formulas:
-
-    Ctrl+V, Left, Ctrl+Down, Right, F, Ctrl+Up, Ctrl+Shift+Down, Ctrl+Shift+Right, Ctrl+D
-
-(of course, you may also fill the cells in any other way, but this one is amusing, isn't it?). And here you are - the column BB now contains the predictions of the random forest model, all computed in pure Excel.
+The multi-stage translation is especially important if you need to generate Excel code, because Excel does not support formulas longer than 8196 characters. If you need to port complex models, splitting them up is therefore the only way. An example of how to deploy a large random forest model to Excel is available in [this video](https://www.youtube.com/watch?v=7vUfa7W0NpY).
 
 ### Other formats
 
