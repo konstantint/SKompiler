@@ -3,7 +3,7 @@ SKompiler: Generate Sympy expressions from SKAST.
 """
 import sympy as sp
 from sklearn.utils.extmath import softmax
-from ..ast import ASTProcessor, Mul
+from ..ast import ASTProcessor, Mul, Elemwise
 from ._common import is_, StandardArithmetics, LazyLet
 
 def translate(node, dialect=None, true_argmax=True, assign_to='y', component=None, lambdify_inputs_str='x', **kw):
@@ -119,22 +119,28 @@ class SympyWriter(ASTProcessor, StandardArithmetics, LazyLet):
     def MakeVector(self, vec):
         return sp.ImmutableMatrix([self(el) for el in vec.elems])
 
-    def ElemwiseUnaryFunc(self, op):
-        arg = self(op.arg)
-        op = self(op.op)
-        if arg.shape[1] != 1:
-            raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
-        return sp.ImmutableMatrix([op(arg[i]) for i in range(len(arg))])
+    def UnaryFunc(self, node):
+        arg = self(node.arg)
+        op = self(node.op)
+        if isinstance(arg, sp.MatrixBase) and isinstance(node.op, Elemwise):
+            if arg.shape[1] != 1:
+                raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
+            return sp.ImmutableMatrix([op(arg[i]) for i in range(len(arg))])
+        else:
+            return op(arg)
 
-    def ElemwiseBinOp(self, op):
-        left = self(op.left)
-        right = self(op.right)
-        op = self(op.op)
-        if left.shape != right.shape:
-            raise ValueError("Shapes of the arguments do not match")
-        if left.shape[1] != 1:
-            raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
-        return sp.ImmutableMatrix([op(left[i], right[i]) for i in range(len(left))])
+    def BinOp(self, node):
+        left = self(node.left)
+        right = self(node.right)
+        op = self(node.op)
+        if isinstance(left, sp.MatrixBase) and isinstance(right, sp.MatrixBase) and isinstance(node.op, Elemwise):
+            if left.shape != right.shape:
+                raise ValueError("Shapes of the arguments do not match")
+            if left.shape[1] != 1:
+                raise NotImplementedError("Elementwise operations are only supported for vectors (column matrices)")
+            return sp.ImmutableMatrix([op(left[i], right[i]) for i in range(len(left))])
+        else:
+            return op(left, right)
     
     def IfThenElse(self, node):
         # Piecewise function with matrix output is not a Matrix itself, which breaks some of the logic

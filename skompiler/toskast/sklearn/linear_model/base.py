@@ -3,8 +3,7 @@ SKLearn linear model to SKAST.
 """
 import numpy as np
 from skompiler.ast import BinOp, DotProduct, VectorConstant,\
-                          Add, NumberConstant, MatrixConstant, MatVecProduct, MakeVector,\
-                          ElemwiseBinOp
+                          Add, NumberConstant, MatrixConstant, MatVecProduct, MakeVector
 
 def linear_model(coef, intercept, inputs):
     """
@@ -33,4 +32,4 @@ def linear_model(coef, intercept, inputs):
         return BinOp(Add(), dec, NumberConstant(intercept))
     else:
         dec = BinOp(MatVecProduct(), MatrixConstant(coef), inputs)
-        return ElemwiseBinOp(Add(), dec, VectorConstant(np.asarray(intercept)))
+        return BinOp(Add(), dec, VectorConstant(np.asarray(intercept)))

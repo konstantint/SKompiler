@@ -148,33 +148,32 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
 
 # Unary operators and functions
 class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'): pass
-class USub(ASTNode, repr='-'): pass     # Unary minus operator
-class Exp(ASTNode, repr='exp'): pass
-class Log(ASTNode, repr='log'): pass
-class Step(ASTNode, repr='step'): pass  # Heaviside step (x >= 0)
 
-# Special functions
+# Some unary functions distribute over vectors. We mark them as such
+class Elemwise: pass
+class USub(ASTNode, Elemwise, repr='-'): pass     # Unary minus operator
+class Exp(ASTNode, Elemwise, repr='exp'): pass
+class Log(ASTNode, Elemwise, repr='log'): pass
+class Step(ASTNode, Elemwise, repr='step'): pass  # Heaviside step (x >= 0)
+class Sigmoid(ASTNode, Elemwise, repr='sigmoid'): pass
+
+# Some functions take vector arguments but do not distribute elementwise
 class VecSumNormalize(ASTNode, repr='sum_normalize'): pass
 class ArgMax(ASTNode, repr='argmax'): pass
 class SKLearnSoftmax(ASTNode, repr='sklearn_softmax'): pass
-class Sigmoid(ASTNode, repr='sigmoid'): pass
-
-class ElemwiseUnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'): pass
 
 # Binary operators
 class BinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
-class Mul(ASTNode, repr='*'): pass
-class Add(ASTNode, repr='+'): pass
-class Sub(ASTNode, repr='-'): pass
-class Div(ASTNode, repr='/'): pass
+class Mul(ASTNode, Elemwise, repr='*'): pass
+class Add(ASTNode, Elemwise, repr='+'): pass
+class Sub(ASTNode, Elemwise, repr='-'): pass
+class Div(ASTNode, Elemwise, repr='/'): pass
 class DotProduct(ASTNode, repr='v@v'): pass
 class MatVecProduct(ASTNode, repr='m@v'): pass
 
-class ElemwiseBinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
-
 # Comparison predicate
 class CompareBinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
-class LtEq(ASTNode, repr='<='): pass
+class LtEq(ASTNode, Elemwise, repr='<='): pass
 
 # IfThenElse
 class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='(if {test} then {iftrue} else {iffalse})'): pass

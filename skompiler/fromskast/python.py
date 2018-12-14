@@ -130,14 +130,12 @@ class PythonASTWriter(ASTProcessor):
             return ast.UnaryOp(op=self(call.op), operand=self(call.arg), **_linearg)
         else:
             return ast.Call(func=self(call.op), args=[self(call.arg)], keywords=[], **_linearg)
-    ElemwiseUnaryFunc = UnaryFunc
 
     def BinOp(self, op):
         return ast.BinOp(op=self(op.op),
                          left=self(op.left),
                          right=self(op.right),
                          **_linearg)
-    ElemwiseBinOp = BinOp
 
     def IfThenElse(self, node):
         return ast.IfExp(test=self(node.test), body=self(node.iftrue), orelse=self(node.iffalse), **_linearg)

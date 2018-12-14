@@ -5,7 +5,7 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ASTProcessor, ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct
+from ..ast import ASTProcessor, ArgMax, VecSumNormalize, SKLearnSoftmax, MatVecProduct, DotProduct, Elemwise
 from ._common import StandardArithmetics, LazyLet, is_, tolist, not_implemented, prepare_assign_to, id_generator
 
 
@@ -119,18 +119,17 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardArithmetics, LazyLet):
             op = self(node.op)
             return Result([op(el) for el in arg.cols], arg.from_obj)
 
-    ElemwiseUnaryFunc = UnaryFunc
     ArgMax = VecSumNormalize = SKLearnSoftmax = not_implemented
 
     def BinOp(self, node):
         left, right, op = self(node.left), self(node.right), self(node.op)
-        if node.op.__class__ in [MatVecProduct, DotProduct]:
+        if not isinstance(node.op, Elemwise):
             return Result(op(left.cols, right.cols), _merge(left.from_obj, right.from_obj))
         elif len(left.cols) != len(right.cols):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))
         return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
     
-    CompareBinOp = ElemwiseBinOp = BinOp
+    CompareBinOp = BinOp
 
     def MakeVector(self, vec):
         result = []

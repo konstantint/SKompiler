@@ -2,7 +2,7 @@
 Functions, useful within multiple ASTProcessor implementations
 """
 from itertools import count
-from ..ast import inline_definitions, IndexedIdentifier, NumberConstant, Exp
+from ..ast import inline_definitions, IndexedIdentifier, NumberConstant, Exp, Elemwise
 
 def is_(val):
     return lambda self, node: val
@@ -16,13 +16,28 @@ def tolist(x):
 def not_implemented(self, node, *args, **kw):
     raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
 
-def bin_op(self, op, **kw):
-    "Most common implementation for BinOp or CompareBinOp"
-    return self(op.op, **kw)(self(op.left, **kw), self(op.right, **kw))
+def bin_op(self, node, **kw):
+    """Most common implementation for BinOp or CompareBinOp,
+       If the arguments are lists and the op is Elemwise, applies
+       the operation elementwise and returns a list."""
+    left = self(node.left, **kw)
+    right = self(node.right, **kw)
+    op = self(node.op, **kw)
+    if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(node.op, Elemwise):
+        return op(left, right)
+    if not isinstance(left, list) or not isinstance(right, list):
+        raise ValueError("Elementwise operations requires both operands to be lists")
+    if len(left) != len(right):
+        raise ValueError("Sizes of the arguments do not match")
+    return [op(l, r) for l, r in zip(left, right)]
 
-def unary_func(self, op, **kw):
+def unary_func(self, node, **kw):
     "Common implementation for UnaryFunc"
-    return self(op.op, **kw)(self(op.arg, **kw))
+    op, arg = self(node.op, **kw), self(node.arg, **kw) 
+    if not isinstance(node.op, Elemwise) or not isinstance(arg, list):
+        return op(arg)
+    else:
+        return [op(a) for a in arg]
 
 #pylint: disable=not-callable
 class LazyLet:
@@ -54,22 +69,6 @@ class VectorsAsLists:
 
     UnaryFunc = unary_func
     BinOp = CompareBinOp = bin_op
-
-    def ElemwiseBinOp(self, op):
-        left = self(op.left)
-        right = self(op.right)
-        op = self(op.op)
-        if not isinstance(left, list) or not isinstance(right, list):
-            raise ValueError("Elementwise operations are only supported for vectors")
-        if len(left) != len(right):
-            raise ValueError("Sizes of the arguments do not match")
-        return [op(l, r) for l, r in zip(left, right)]
-
-    def ElemwiseUnaryFunc(self, op):
-        arg = self(op.arg)
-        if not isinstance(arg, list):
-            raise ValueError("Elementwise operations are only supported for vectors")
-        return list(map(self(op.op), arg))
 
     def VectorIdentifier(self, id):
         return [self(IndexedIdentifier(id.id, i, id.size)) for i in range(id.size)]
