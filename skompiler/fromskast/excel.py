@@ -9,11 +9,20 @@ import numpy as np
 from ._common import ASTProcessor, is_, StandardOps, VectorsAsLists, id_generator
 
 
-def translate(node, component=None, multistage=False, assign_to=None,
+def translate(node, component=None, multistage=True, assign_to=None,
               multistage_subexpression_min_length=3, _max_subexpression_length=8100):
     """Translates SKAST to an Excel formula (or a list of those, if the output should be a vector).
 
     Kwargs:
+        component (int or None):
+                   If the result is a vector and only one component is required, pass its index here.
+
+        multistage (bool):
+                   When False, generates a single string, describing the model as one long expression.
+                   For complex models this string will be too long to be used in Excel.
+                   When True (default), returns an ExcelCode object, which is an OrderedDict,
+                   mapping cell names to expressions which they should correspond to.
+
         assign_to: A list or a generator expression, producing Excel cell names
                    which can be filled in a multi-stage computation.
                    When None, a default sequence ['A1', 'B1', ...] will be used.
@@ -36,8 +45,17 @@ def translate(node, component=None, multistage=False, assign_to=None,
 
     >>> from skompiler.toskast.string import translate as skast
     >>> expr = skast('[2*x[0]/5, 1] if x[1] <= 3 else [12.0+y, -45.5]')
-    >>> print(translate(expr))
+    >>> print(translate(expr, multistage=False))
     ['IF((x2<=3),((2*x1)/5),(12.0+y))', 'IF((x2<=3),1,(-45.5))']
+    >>> print(translate(expr))
+    A1=IF((x2<=3),((2*x1)/5),(12.0+y))
+    B1=IF((x2<=3),1,(-45.5))
+    >>> expr = skast('a=1+x; a+a+a')
+    >>> print(translate(expr))
+    A1=(1+x)
+    B1=((A1+A1)+A1)
+    >>> print(translate(expr, multistage=False))
+    (((1+x)+(1+x))+(1+x))
     """
     writer = ExcelWriter(multistage=multistage, assign_to=assign_to,
                          multistage_subexpression_min_length=multistage_subexpression_min_length,

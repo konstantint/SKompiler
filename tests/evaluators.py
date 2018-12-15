@@ -1,4 +1,5 @@
 import math
+import warnings
 import pandas as pd
 import numpy as np
 import sqlalchemy as sa
@@ -13,17 +14,20 @@ def _sql_log(x):
         return np.log(x)
 
 class SQLiteEval:
-    def __init__(self, X):
+    def __init__(self, X, multistage):
         self.engine = sa.create_engine("sqlite://")
         self.conn = self.engine.connect()
         self.conn.connection.create_function('log', 1, _sql_log)
         self.conn.connection.create_function('exp', 1, math.exp)
         df = pd.DataFrame(X, columns=['x{0}'.format(i+1) for i in range(X.shape[1])]).reset_index()
         df.to_sql('data', self.conn)
+        self.multistage = multistage
         
     def __call__(self, expr):
-        query = 'select {0} from data'.format(to_sql(expr, 'sqlite', 'y'))
-        result = pd.read_sql(query, self.conn).values
+        query = to_sql(expr, 'sqlite', multistage=self.multistage, key_column='index')
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning) # divide by zero encountered in log
+            result = pd.read_sql(query, self.conn).values
         if result.shape[1] == 1:
             result = result[:, 0]
         return result
@@ -32,14 +36,6 @@ class SQLiteEval:
         #self.conn.close()   # <-- This raises an exception somewhy
         pass
     
-class SQLiteMultistageEval(SQLiteEval):
-    def __call__(self, expr):
-        query = to_sql(expr, 'sqlite', 'y', multistage=True, multistage_key_column='index')
-        result = pd.read_sql(query, self.conn).values
-        if result.shape[-1] == 1:
-            result = result[..., 0]
-        return result
-
 class PythonEval:
     def __init__(self, X):
         self.X = X
