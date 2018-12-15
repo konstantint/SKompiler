@@ -7,7 +7,7 @@ import numpy as np
 import sqlalchemy as sa
 from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
-                     not_implemented, prepare_assign_to, id_generator
+                     not_implemented, prepare_assign_to, id_generator, denumpyfy
 
 
 def translate(expr, assign_to=None, from_obj='data', key_column='id', component=None):
@@ -94,7 +94,7 @@ class SQLAlchemyMultistageWriter(ASTProcessor, StandardOps, StandardArithmetics)
         if np.isinf(value):
             return self.positive_infinity if value > 0 else self.negative_infinity
         else:
-            return value
+            return denumpyfy(value)
 
     def NumberConstant(self, num):
         return Result([self._number_constant(num.value)], None)

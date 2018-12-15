@@ -194,9 +194,14 @@ class MakeVector(ASTNode, fields='elems'):
     def __str__(self):
         elems = ', '.join(str(e) for e in self.elems)
         return '[{0}]'.format(elems)
+    def _decompose(self):
+        return self.elems
 
 # Leaf nodes
-class VectorIdentifier(ASTNode, fields='id size', repr='{id}'): pass
+class VectorIdentifier(ASTNode, fields='id size', repr='{id}'):
+    def _decompose(self):
+        return [IndexedIdentifier(self.id, i, self.size) for i in range(self.size)]
+
 class Identifier(ASTNode, fields='id', repr='{id}'): pass
 
 # Note that IndexedIdentifier is not a generic subscript operator. Its field must contain a string id and an integer index as well as the
@@ -204,7 +209,10 @@ class Identifier(ASTNode, fields='id', repr='{id}'): pass
 # This lets us "fake" vector input variables in contexts like SQL, where we interpret IndexedIdentifier("x", 1, 10) as a concatenated name "x1"
 class IndexedIdentifier(ASTNode, fields='id index size', repr='{id}[{index}]'): pass
 class NumberConstant(ASTNode, fields='value', repr='{value}'): pass
-class VectorConstant(ASTNode, fields='value', repr='{value}'): pass
+class VectorConstant(ASTNode, fields='value', repr='{value}'):
+    def _decompose(self):
+        return [NumberConstant(v) for v in self.value]
+
 class MatrixConstant(ASTNode, fields='value', repr='{value}'): pass
 
 # Variable definitions
@@ -416,3 +424,10 @@ def replace(node, **kw):
         return new_node
     else:
         return node
+
+def decompose(node):
+    """Some nodes correspond to vectors and can be "decomposed" to their
+       parts via the _decompose method."""
+    if not hasattr(node, '_decompose'):
+        raise ValueError("Cannot determine number of features")
+    return node._decompose()

@@ -5,7 +5,7 @@ from functools import reduce
 import warnings
 import numpy as np
 import sqlalchemy as sa
-from ._common import ASTProcessor, StandardOps, StandardArithmetics, VectorsAsLists, is_, prepare_assign_to
+from ._common import ASTProcessor, StandardOps, StandardArithmetics, VectorsAsLists, is_, prepare_assign_to, denumpyfy
 from ._sqla_multistage import translate as translate_multistage
 
 
@@ -106,7 +106,7 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics, VectorsAs
         if np.isinf(num.value):
             return self.positive_infinity if num.value > 0 else self.negative_infinity
         else:
-            return num.value
+            return denumpyfy(num.value)
 
     _iif = lambda self, test, ift, iff: _iif(test, ift, iff)
     MatVecProduct = is_(_matvecproduct)

@@ -11,17 +11,21 @@ from sklearn.svm import SVC, SVR
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, \
                              GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.preprocessing import Binarizer
+from sklearn.pipeline import Pipeline
 from skompiler.toskast.sklearn import translate
 import skompiler.fromskast.sympy as to_sympy
+from skompiler import skompile
+from skompiler.ast import VectorIdentifier
 from .verification import X, y, y_bin, verify as _verify
 from .evaluators import SQLiteEval
 
 
-def verify(model, methods=None, binary_fix=False, inf_fix=False):
+def verify(model, methods=None, binary_fix=False, inputs='x'):
     methods = methods or ['decision_function', 'predict_proba', 'predict_log_proba', 'predict']
     for method in methods:
-        expr = translate(model, method=method)
-        _verify(model, method, expr, binary_fix=binary_fix, inf_fix=inf_fix)
+        expr = translate(model, inputs=inputs, method=method)
+        _verify(model, method, expr, binary_fix=binary_fix, inf_fix=method == 'predict_log_proba')
 
 def test_logreg():
     m = LogisticRegression(solver='lbfgs', multi_class='ovr')
@@ -56,7 +60,7 @@ def test_tree():
             verify(m, ['predict_proba'])
             with warnings.catch_warnings(): # Ignore divide by zeroes encountered in log(0)
                 warnings.simplefilter('ignore', RuntimeWarning)
-                verify(m, ['predict_log_proba'], inf_fix=True)
+                verify(m, ['predict_log_proba'])
 
 def test_rf():
     for m_class in [RandomForestClassifier, RandomForestRegressor]:
@@ -66,7 +70,7 @@ def test_rf():
             verify(m, ['predict_proba'])
             with warnings.catch_warnings(): # Ignore divide by zeroes encountered in log(0)
                 warnings.simplefilter('ignore', RuntimeWarning)
-                verify(m, ['predict_log_proba'], inf_fix=True)
+                verify(m, ['predict_log_proba'])
 
 def test_gb():
     for m_class in [GradientBoostingClassifier, GradientBoostingRegressor]:
@@ -88,3 +92,24 @@ def test_columnlist():
     fn = to_sympy.lambdify(' '.join(inputs), to_sympy.translate(expr))
     pred_Y = np.asarray([fn(*x) for x in X])
     assert np.abs(pred_Y - true_Y).max() < 1e-10
+
+def test_binarizer():
+    b = Binarizer(np.mean(X))
+    inputs = ['x{0}'.format(i+1) for i in range(X.shape[1])]
+    expr = skompile(b.transform, inputs)
+    assert np.all(b.transform(X) == np.asarray([expr.evaluate(x1=x[0], x2=x[1], x3=x[2], x4=x[3]) for x in X]))
+
+
+def make_pipeline(*args):
+    return Pipeline([(str(i), a) for i, a in enumerate(args)]).fit(X, y)
+
+def test_pipeline():
+    b1 = Binarizer(np.mean(X))
+    b2 = Binarizer(0.5)
+    m = RandomForestClassifier(10, max_depth=7)
+    inp = VectorIdentifier('x', 4)
+    verify(make_pipeline(b1, b2, m), ['predict', 'predict_proba', 'predict_log_proba'], inputs=inp)
+    verify(make_pipeline(b1, m), ['predict', 'predict_proba', 'predict_log_proba'], inputs=inp)
+    verify(make_pipeline(m), ['predict', 'predict_proba', 'predict_log_proba'], inputs=inp)
+    verify(make_pipeline(b1), ['transform'], inputs=inp)
+    verify(make_pipeline(b1, b2), ['transform'], inputs=inp)

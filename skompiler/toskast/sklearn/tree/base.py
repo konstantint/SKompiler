@@ -2,7 +2,8 @@
 Decision trees to SKAST
 """
 import numpy as np
-from ....ast import IfThenElse, NumberConstant, VectorConstant, IndexedIdentifier, BinOp, LtEq, VectorIdentifier
+from ....ast import IfThenElse, NumberConstant, VectorConstant, BinOp, LtEq, decompose
+from ....ast import VectorIdentifier #pylint: disable=unused-import
 
 
 def decision_tree(tree, inputs, method="predict", value_transform=None):
@@ -28,7 +29,6 @@ def decision_tree(tree, inputs, method="predict", value_transform=None):
     >>> print(decision_tree(m.tree_, ['a','b','c','d'], method='predict_proba'))
     (if (d <= 0.80...) then [1. 0. 0.] else (if (d <= 1.75) then [0... 0.90... 0.09...] else [0... 0.02... 0.97...]))
     """
-
     v = tree.value[:, 0, :]
     if v.shape[1] == 1:
         # Regression model
@@ -57,10 +57,10 @@ class TreeWalker:
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.tree import DecisionTreeRegressor
     >>> m =  DecisionTreeRegressor(max_depth=2, random_state=1).fit(*load_iris(True))
-    >>> tr = TreeWalker(m.tree_, [IndexedIdentifier('x', i, 4) for i in range(4)])
+    >>> tr = TreeWalker(m.tree_, VectorIdentifier('x', 4))
     >>> print(tr.walk())
     (if (x[3] <= 0.80...) then 0.0 else (if (x[3] <= 1.75) then 1.09... else 1.97...))
-    >>> tr = TreeWalker(m.tree_, [IndexedIdentifier('x', i, 4) for i in range(4)], np.arange(m.tree_.node_count))
+    >>> tr = TreeWalker(m.tree_, VectorIdentifier('x', 4), np.arange(m.tree_.node_count))
     >>> print(tr.walk())
     (if (x[3] <= 0.80...) then 1 else (if (x[3] <= 1.75) then 3 else 4))
     """
@@ -71,8 +71,8 @@ class TreeWalker:
            node_values (list/array): A way to override the tree.value array.
                                      Must be a 1D or 2D array of values.
         """
-        if isinstance(features, VectorIdentifier):
-            features = [IndexedIdentifier(features.id, i, features.size) for i in range(features.size)]
+        if not isinstance(features, list):
+            features = decompose(features)
         
         self.tree = tree
         self.features = features

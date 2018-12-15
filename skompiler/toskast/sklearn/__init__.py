@@ -11,11 +11,15 @@ from sklearn.tree.tree import BaseDecisionTree, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor,\
                              GradientBoostingClassifier, GradientBoostingRegressor
 
+from sklearn.preprocessing import Binarizer
+from sklearn.pipeline import Pipeline
+
 from .linear_model.logistic import logreg_binary, logreg_multiclass
 from .linear_model.base import linear_model
 from .tree.base import decision_tree
 from .ensemble.forest import random_forest_classifier, random_forest_regressor
 from .ensemble.gradient_boosting import gradient_boosting_classifier, gradient_boosting_regressor
+from .preprocessing.data import binarize
 from ...ast import VectorIdentifier, Identifier
 
 
@@ -117,14 +121,35 @@ def _(model, inputs, method):
     return gradient_boosting_regressor(model, _prepare_inputs(inputs, model.n_features_))
 
 
-def _prepare_inputs(inputs, n_features):
+@register(Binarizer, ['transform'])
+def _(model, inputs, method):
+    return binarize(model.threshold, _prepare_inputs(inputs))
+
+
+@register(Pipeline, ['predict', 'predict_proba', 'decision_function', 'predict_log_proba', 'transform'])
+def _(model, inputs, method):
+    if not model.steps:
+        raise ValueError("Empty pipeline provided")
+    # The first step in the pipeline is responsible for preparing the inputs
+    first_method = 'transform' if len(model.steps) > 1 else method
+    expr = translate(model.steps[0][1], inputs, first_method)
+    for i in range(1, len(model.steps)-1):
+        expr = translate(model.steps[i][1], expr, 'transform')
+    if len(model.steps) > 1:
+        expr = translate(model.steps[-1][1], expr, method)
+    return expr
+
+
+def _prepare_inputs(inputs, n_features=None):
     if hasattr(inputs, '__next__'):
         # Unroll iterators
         inputs = [next(inputs) for i in range(n_features)]
     if isinstance(inputs, str):
+        if not n_features:
+            raise ValueError("Impossible to determine number of input variables")
         return VectorIdentifier(inputs, size=n_features)
     elif isinstance(inputs, list) and isinstance(inputs[0], str):
-        if len(inputs) != n_features:
+        if n_features is not None and len(inputs) != n_features:
             raise ValueError("The number of inputs must match the number of features in the tree")
         features = [Identifier(el) for el in inputs]
     else:
