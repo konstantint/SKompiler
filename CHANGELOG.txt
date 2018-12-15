@@ -1,4 +1,10 @@
-Version 0.3.1
+Version 0.4
+-------------
+
+    - More logical set of SK AST nodes, proper handling of Let nodes
+    - Support for Pipeline objects
+
+Version 0.3-0.3.1
 -------------
 
     - Multi-stage Excel code generation
