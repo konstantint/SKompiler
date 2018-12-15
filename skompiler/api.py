@@ -82,4 +82,3 @@ def _get_model_and_method(obj):
                          "SKLearn's metaclasses and cannot be passed to skompile as skompile(m.predict). "
                          "Please, use the skompile(m, 'predict') syntax instead.")
     return obj.__self__, obj.__name__
-

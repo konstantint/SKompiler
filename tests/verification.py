@@ -3,7 +3,7 @@ Utility for basic testing of models.
 """
 import numpy as np
 from sklearn.datasets import load_iris
-from .evaluators import PythonEval, SympyEval, SQLiteEval, SQLiteMultistageEval
+from .evaluators import PythonEval, SympyEval, SQLiteEval, SQLiteMultistageEval, ExcelEval
 
 # Set up evaluators
 X, y = load_iris(True)
@@ -16,6 +16,7 @@ _evaluators = {
     'sympy2': SympyEval(X, true_argmax=True),
     'sqlite': SQLiteEval(X),
     'sqlite2': SQLiteMultistageEval(X),
+    'excel': ExcelEval(X)
 }
 
 def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, data_preprocessing=None):
@@ -35,6 +36,7 @@ def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, 
         assert np.abs(pred_Y - true_Y).max() < 1e-10
 
 def verify(model, method, expr, binary_fix=False, inf_fix=False):
+    verify_one(model, method, 'excel', expr, binary_fix, inf_fix)
     verify_one(model, method, 'python', expr, binary_fix, inf_fix)
     verify_one(model, method, 'sympy', expr, binary_fix, inf_fix)
     if not binary_fix and method == 'predict' and hasattr(model, 'decision_function'):

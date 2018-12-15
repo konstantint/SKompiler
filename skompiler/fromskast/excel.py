@@ -10,7 +10,7 @@ from ._common import ASTProcessor, is_, StandardOps, VectorsAsLists, id_generato
 
 
 def translate(node, component=None, multistage=False, assign_to=None,
-              multistage_subexpression_min_length=3):
+              multistage_subexpression_min_length=3, _max_subexpression_length=8100):
     """Translates SKAST to an Excel formula (or a list of those, if the output should be a vector).
 
     Kwargs:
@@ -31,13 +31,17 @@ def translate(node, component=None, multistage=False, assign_to=None,
             Specifying a very large value is nearly equivalent to setting multistage=False
             (the only difference is that the returned value is still an OrderedDict with a single assignment)
 
+        _max_subexpression_length (int): Max length of a single subexpression in multistage mode.
+                                         You should not change it (used for testing internally)
+
     >>> from skompiler.toskast.string import translate as skast
     >>> expr = skast('[2*x[0]/5, 1] if x[1] <= 3 else [12.0+y, -45.5]')
     >>> print(translate(expr))
     ['IF((x2<=3),((2*x1)/5),(12.0+y))', 'IF((x2<=3),1,(-45.5))']
     """
     writer = ExcelWriter(multistage=multistage, assign_to=assign_to,
-                         multistage_subexpression_min_length=multistage_subexpression_min_length)
+                         multistage_subexpression_min_length=multistage_subexpression_min_length,
+                         _max_subexpression_length=_max_subexpression_length)
     result = writer(node)
     if component is not None:
         result = result[component]
@@ -51,7 +55,10 @@ def _sum(iterable):
     return "({0})".format("+".join(iterable))
 
 def _iif(cond, iftrue, iffalse):
-    return 'IF({0},{1},{2})'.format(cond, iftrue, iffalse)
+    if iftrue == iffalse:
+        return iftrue
+    else:
+        return 'IF({0},{1},{2})'.format(cond, iftrue, iffalse)
 
 def _matvecproduct(M, x):
     return [_sum('{0}*{1}'.format(m_i[j], x[j]) for j in range(len(x))) for m_i in M]
@@ -156,6 +163,14 @@ def _compact_string(s, max_len=70):
     else:
         return s
 
+_builtins = {
+    'IF': lambda t, a, b: a if t else b,
+    'MAX': max,
+    'EXP': np.exp,
+    'LOG': np.log
+}
+_single_comparison = re.compile(r'(?<!\<)=')
+
 class ExcelCode(OrderedDict):
     """A version of OrderedDict which prints itself nicer."""
     def __str__(self):
@@ -179,19 +194,34 @@ class ExcelCode(OrderedDict):
         return pd.DataFrame([[f'={v}' for v in self.values()]],
                             columns=self.keys())
 
+    def evaluate(self, **kwargs):
+        """Evaluates the excel code using Python's eval.
+        Will probably fail with MemoryError for longer strings
+        (because Python's ast.parse can't handle them)."""
+        env = {}
+        env.update(_builtins)
+        for k, v in self.items():
+            expand = _single_comparison.sub('==', v) # Excel uses '=' for comparisons
+            env[k] = eval(expand, kwargs, env) #pylint: disable=eval-used
+        for k in _builtins:
+            del env[k]
+        return env
+
+
 class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     """A SK AST processor, producing an Excel expression (or a list of those)"""
 
     def __init__(self, multistage=False, assign_to=None, positive_infinity=float(np.finfo('float64').max),
                  negative_infinity=float(np.finfo('float64').min),
-                 multistage_subexpression_min_length=3):
+                 multistage_subexpression_min_length=3,
+                 _max_subexpression_length=8100):
         self.positive_infinity = positive_infinity
         self.negative_infinity = negative_infinity
         self.multistage = multistage
         self.multistage_subexpression_min_length = multistage_subexpression_min_length
-        self.max_subexpression_length = 8100  # In multistage mode we attempt to keep subexpressions shorter than this
-                                              # (because Excel does not allow cell values longer than 8196 chars)
-                                              # NB: this is rather ad-hoc and may not always work.
+        self.max_subexpression_length = _max_subexpression_length  # In multistage mode we attempt to keep subexpressions shorter than this
+                                                                   # (because Excel does not allow cell values longer than 8196 chars)
+                                                                   # NB: this is rather ad-hoc and may not always work.
 
         if self.multistage:
             if assign_to is None:
@@ -240,7 +270,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     Exp = is_fmt('EXP({0})')
     Log = is_fmt('LOG({0})')
     Step = is_(_step)
-    Sigmoid = is_fmt('(1/(1+EXP(-{0}))')
+    Sigmoid = is_fmt('(1/(1+EXP(-{0})))')
     MatVecProduct = is_(_matvecproduct)
     DotProduct = is_(_dotproduct)
     VecSum = is_(_sum)

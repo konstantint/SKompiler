@@ -36,8 +36,8 @@ class SQLiteMultistageEval(SQLiteEval):
     def __call__(self, expr):
         query = to_sql(expr, 'sqlite', 'y', multistage=True, multistage_key_column='index')
         result = pd.read_sql(query, self.conn).values
-        if result.shape[1] == 1:
-            result = result[:, 0]
+        if result.shape[-1] == 1:
+            result = result[..., 0]
         return result
 
 class PythonEval:
@@ -59,3 +59,25 @@ class SympyEval:
         if pred_Y.shape[-1] == 1:
             pred_Y = pred_Y[..., 0]
         return pred_Y
+
+class ExcelEval:
+    def __init__(self, X):
+        self.X = X
+
+    def _eval(self, code, n_outputs, x):
+        inputs = {'x{0}'.format(i+1): x_i for i, x_i in enumerate(x)}
+        result = code.evaluate(**inputs)
+        keys = list(result.keys())[-n_outputs:]
+        return np.asarray([result[k] for k in keys])
+    
+    def __call__(self, expr):
+        code = expr.to('excel', multistage=True, _max_subexpression_length=500)
+        # We don't know how many outputs should the expression produce just from the
+        # excel's result, so we use a hackish way to determine it via a separate evaluator
+        res = expr.lambdify()(x=self.X[0])
+        shape = getattr(res, 'shape', None)
+        n_outputs = 1 if not shape else shape[0]
+        result = np.asarray([self._eval(code, n_outputs, x) for x in self.X])
+        if result.shape[-1] == 1:
+            result = result[..., 0]
+        return result
