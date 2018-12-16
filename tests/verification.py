@@ -25,8 +25,10 @@ def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, 
     if data_preprocessing:
         X_inputs = data_preprocessing(X_inputs)
     true_Y = getattr(model, method)(X_inputs)
-    if binary_fix and len(true_Y.shape) > 1 and true_Y.shape[1] > 1:
+    if binary_fix and true_Y.ndim > 1 and true_Y.shape[1] > 1:
         true_Y = true_Y[:, 1]
+    if true_Y.ndim > 1 and true_Y.shape[1] == 1:
+        true_Y = true_Y[:, 0]
     pred_Y = _evaluators[evaluator](expr)
     if inf_fix:
         # Our custom SQL log function returns -FLOAT_MIN instead of -inf for log(0)

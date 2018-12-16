@@ -77,6 +77,8 @@ def skompile(*args, inputs=None):
     return from_sklearn(model, inputs=inputs, method=method)
 
 def _get_model_and_method(obj):
+    if not hasattr(obj, '__call__'):
+        raise ValueError("Please, provide a method to compile.")
     if not hasattr(obj, '__self__'):
         raise ValueError("The bound method object was probably mangled by "
                          "SKLearn's metaclasses and cannot be passed to skompile as skompile(m.predict). "

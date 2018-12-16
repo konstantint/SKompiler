@@ -1,10 +1,14 @@
 Version 0.5
 -------------
 
-    - Fixed a bug in Excel code generation
     - Changed skompile call signature
+    - Fixed Excel code generation
     - Changed SQLAlchemy translator
     - multistage=True is the default now for SQL and Excel
+    - Improved code organization
+    - Nicer DSL for generating SKAST, basic symbolic processing and type checking
+    - New algorithms: AdaBoostClassifier, KMeans, PCA, MLPClassifier, MLPRegressor,
+      Normalizer, StandardScaler, MinMaxScaler, MaxAbsScaler, Binarizer
 
 Version 0.4
 -------------

@@ -19,6 +19,7 @@ class SQLiteEval:
         self.conn = self.engine.connect()
         self.conn.connection.create_function('log', 1, _sql_log)
         self.conn.connection.create_function('exp', 1, math.exp)
+        self.conn.connection.create_function('sqrt', 1, math.sqrt)
         df = pd.DataFrame(X, columns=['x{0}'.format(i+1) for i in range(X.shape[1])]).reset_index()
         df.to_sql('data', self.conn)
         self.multistage = multistage
@@ -42,7 +43,10 @@ class PythonEval:
 
     def __call__(self, expr):
         fn = expr.lambdify()
-        return np.asarray([fn(x=x) for x in self.X])
+        result = np.asarray([fn(x=x) for x in self.X])
+        if result.ndim > 1 and result.shape[-1] == 1:
+            result = result[..., 0]
+        return result
 
 class SympyEval:
     def __init__(self, X, true_argmax=False):

@@ -9,18 +9,28 @@ from sklearn.linear_model.base import LinearModel
 from sklearn.svm import SVC, SVR
 from sklearn.tree.tree import BaseDecisionTree, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor,\
-                             GradientBoostingClassifier, GradientBoostingRegressor
+                             GradientBoostingClassifier, GradientBoostingRegressor,\
+                             AdaBoostClassifier
+from sklearn.cluster import KMeans
+from sklearn.decomposition.pca import _BasePCA
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-from sklearn.preprocessing import Binarizer
+from sklearn.preprocessing import Binarizer, MinMaxScaler, MaxAbsScaler, StandardScaler,\
+                                  Normalizer
 from sklearn.pipeline import Pipeline
+
+from skompiler.dsl import ident, vector
 
 from .linear_model.logistic import logreg_binary, logreg_multiclass
 from .linear_model.base import linear_model
 from .tree.base import decision_tree
 from .ensemble.forest import random_forest_classifier, random_forest_regressor
 from .ensemble.gradient_boosting import gradient_boosting_classifier, gradient_boosting_regressor
-from .preprocessing.data import binarize
-from ...ast import VectorIdentifier, Identifier
+from .ensemble.weight_boosting import adaboost_classifier
+from .cluster.k_means import k_means
+from .decomposition.pca import pca
+from .neural_network.multilayer_perceptron import mlp, mlp_classifier
+from .preprocessing.data import binarize, scale, unscale, standard_scaler, normalizer
 
 
 @singledispatch
@@ -35,7 +45,7 @@ def translate(model, inputs='x', method='predict'):
             the input in the resulting expression. It can be given either as a
             single string (in this case the variable denotes an input vector),
             a list of strings (in this case each element denotes the name of one input component of a vector),
-            or an ASTNode (e.g. VectorIdentifier, or MakeVector([Identifier('x'), Identifier('y')]))
+            or an ASTNode (e.g. VectorIdentifier, or vector([ident('x'), ident('y')]))
         
       method (string):  Method to be expressed. Possible options:
             'predict', for all supported models.
@@ -120,11 +130,17 @@ def _(model, inputs, method):
 def _(model, inputs, method):
     return gradient_boosting_regressor(model, _prepare_inputs(inputs, model.n_features_))
 
-
-@register(Binarizer, ['transform'])
+@register(AdaBoostClassifier, ['decision_function', 'predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return binarize(model.threshold, _prepare_inputs(inputs))
+    return adaboost_classifier(model, _prepare_inputs(inputs, model.estimators_[0].n_features_), method)
 
+@register(KMeans, ['transform', 'predict'])
+def _(model, inputs, method):
+    return k_means(model.cluster_centers_, _prepare_inputs(inputs, model.cluster_centers_.shape[1]), method)
+
+@register(_BasePCA, ['transform'])
+def _(model, inputs, method):
+    return pca(model, _prepare_inputs(inputs, model.components_.shape[1]))
 
 @register(Pipeline, ['predict', 'predict_proba', 'decision_function', 'predict_log_proba', 'transform'])
 def _(model, inputs, method):
@@ -139,6 +155,38 @@ def _(model, inputs, method):
         expr = translate(model.steps[-1][1], expr, method)
     return expr
 
+@register(MLPRegressor, ['predict'])
+def _(model, inputs, method):
+    return mlp(model, _prepare_inputs(inputs, len(model.coefs_[0])))
+
+@register(MLPClassifier, ['predict', 'predict_proba', 'predict_log_proba'])
+def _(model, inputs, method):
+    return mlp_classifier(model, _prepare_inputs(inputs, len(model.coefs_[0])), method)
+
+@register(Binarizer, ['transform'])
+def _(model, inputs, method):
+    return binarize(model.threshold, _prepare_inputs(inputs))
+
+@register(MinMaxScaler, ['transform'])
+def _(model, inputs, method):
+    return scale(model.scale_, model.min_, _prepare_inputs(inputs, len(model.scale_)))
+
+@register(MaxAbsScaler, ['transform'])
+def _(model, inputs, method):
+    return unscale(model.scale_, _prepare_inputs(inputs, len(model.scale_)))
+
+@register(StandardScaler, ['transform'])
+def _(model, inputs, method):
+    n = None
+    if model.with_mean:
+        n = len(model.mean_)
+    elif model.with_std:
+        n = len(model.scale_)
+    return standard_scaler(model, _prepare_inputs(inputs, n))
+
+@register(Normalizer, ['transform'])
+def _(model, inputs, method):
+    return normalizer(model.norm, _prepare_inputs(inputs))
 
 def _prepare_inputs(inputs, n_features=None):
     if hasattr(inputs, '__next__'):
@@ -147,11 +195,12 @@ def _prepare_inputs(inputs, n_features=None):
     if isinstance(inputs, str):
         if not n_features:
             raise ValueError("Impossible to determine number of input variables")
-        return VectorIdentifier(inputs, size=n_features)
-    elif isinstance(inputs, list) and isinstance(inputs[0], str):
+        return ident(inputs, size=n_features)
+    elif isinstance(inputs, list):
         if n_features is not None and len(inputs) != n_features:
             raise ValueError("The number of inputs must match the number of features in the tree")
-        features = [Identifier(el) for el in inputs]
+        if isinstance(inputs[0], str):
+            inputs = [ident(el) for el in inputs]
+        return vector(inputs)
     else:
-        features = inputs  # Assume we pass a list of input columns directly
-    return features
+        return inputs

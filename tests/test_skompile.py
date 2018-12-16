@@ -1,23 +1,17 @@
 """
 Smoke test for all supported models and translation types.
 """
-#pylint: disable=possibly-unused-variable
 import warnings
-import numpy as np
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
-from sklearn.svm import SVR, SVC
-from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeRegressor
 from skompiler.ast import BinOp, Mul, NumberConstant, IndexedIdentifier
+from skompiler.dsl import ident
 from skompiler.toskast.sklearn import _supported_methods
 from skompiler import skompile
 from .verification import verify_one
 
-X, y = load_iris(True)
-y_bin = np.array(y)
-y_bin[y_bin == 2] = 0
+# Sympy targets not included because these take a long time to evaluate (and fail on some models, e.g. 'sympy/c', 'sympy/js')
+_translate_targets = ['string', 'python/code']
+_eval_targets = ['python', 'excel', 'sqlite2', 'sympy']
 
 def list_supported_methods(model):
     if isinstance(model, DecisionTreeRegressor):
@@ -25,63 +19,38 @@ def list_supported_methods(model):
     for cls, methods in _supported_methods.items():
         if isinstance(model, cls):
             return methods
-        
-def make_models():
-    ols = LinearRegression().fit(X, y)
-    lr_bin = LogisticRegression().fit(X, y_bin)
-    lr_ovr = LogisticRegression(multi_class='ovr').fit(X, y)
-    lr_mn = LogisticRegression(solver='lbfgs', multi_class='multinomial').fit(X, y)
-    svc = SVC(kernel='linear').fit(X, y_bin)
-    svr = SVR(kernel='linear').fit(X, y)
-    dtc = DecisionTreeClassifier(max_depth=4).fit(X, y)
-    dtr = DecisionTreeRegressor(max_depth=4).fit(X, y)
-    rfc = RandomForestClassifier(n_estimators=3, max_depth=3, random_state=1).fit(X, y)
-    rfr = RandomForestRegressor(n_estimators=3, max_depth=3, random_state=1).fit(X, y)
-    gbc = GradientBoostingClassifier(n_estimators=3, max_depth=3, random_state=1).fit(X, y)
-    gbr = GradientBoostingRegressor(n_estimators=3, max_depth=3, random_state=1).fit(X, y)
-    return locals()
+    raise ValueError("Unsupported model: {0}".format(model))
 
-_models = make_models()
-# Sympy targets not included because these take a long time to evaluate
-_targets = ['sqlalchemy', 'python', 'excel', 'string', 'sqlalchemy/sqlite', 'python/code']
+#pylint: disable=unsupported-membership-test
+_limit = None
 
-def test_skompile():
+def test_skompile(models):
     # TODO: If we use NumberConstant(2), we get a failed test for RandomForestRegressor.
     # Could it be due to float precision issues?
     transformed_features = [BinOp(Mul(), IndexedIdentifier('x', i, 4), NumberConstant(2.1)) for i in range(4)]
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', RuntimeWarning)  # Ignore divide by zero warning for log(0)
-        for name, model in _models.items():
+        for name, model in models.items():
+            if _limit and name not in _limit:
+                continue
             methods = list_supported_methods(model)
             for method in methods:
-                expr = skompile(getattr(model, method))
-                verify_one(model, method, 'python', expr,
-                           binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'))
-                for target in _targets:
+                if name in ['bin', 'n1', 'n2', 'n3']: # Binarizer and Normalizer want to know number of features
+                    expr = skompile(getattr(model, method), inputs=ident('x', 4))
+                else:
+                    expr = skompile(getattr(model, method))
+
+                #print(model, method)
+                for evaluator in _eval_targets:
+                    #print(evaluator)
+                    verify_one(model, method, evaluator, expr,
+                               binary_fix=name.endswith('_bin'), inf_fix=(method == 'predict_log_proba'))
+                for target in _translate_targets:
                     expr.to(target)
 
                 # Check that everything will work if we provide expressions instead of raw features
                 expr = skompile(getattr(model, method), transformed_features)
                 verify_one(model, method, 'python', expr,
-                           binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'),
+                           binary_fix=name.endswith('_bin'), inf_fix=(method == 'predict_log_proba'),
                            data_preprocessing=lambda X: X*2.1)
-                
-                # We don't check Excel correctness, but we can at least see that no exceptiosn fall out
-                expr.to('excel')
-                expr.to('excel', multistage=True)
-
-def test_sympy_skompile():
-    """We run sympy in a separate test, because it takes longer than other generations"""
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', RuntimeWarning)  # Ignore divide by zero warning for log(0)
-        for name, model in _models.items():
-            methods = list_supported_methods(model)
-            for method in methods:
-                expr = skompile(getattr(model, method))
-                verify_one(model, method, 'sympy', expr,
-                           binary_fix=(name == 'lr_bin'), inf_fix=(method == 'predict_log_proba'))
-                # This thing is way too slow and falls on some models
-                # TODO: Figure out why
-                #for target in ['sympy/c', 'sympy/js']:
-                #    expr.to(target)

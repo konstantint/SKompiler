@@ -1,7 +1,8 @@
 """
 Decision trees to SKAST
 """
-from ..common import classifier, sum_
+from skompiler.dsl import sum_
+from ..common import classifier
 from ..tree.base import decision_tree
 
 

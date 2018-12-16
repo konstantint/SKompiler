@@ -167,9 +167,13 @@ class SympyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     Exp = is_(sp.exp)
     Log = is_(sp.log)
     Step = is_(sp.Heaviside)
+    Sqrt = is_(sp.sqrt)
+    Abs = is_(sp.Abs)
     VecSum = is_(sum) # Yes, we return a Python summation here
     Softmax = is_(_softmax)
     VecMax = is_(_max)
+    Max = is_(lambda x, y: _max([x, y]))
+    Eq = is_(sp.Eq)
 
     def ArgMax(self, _):
         return _argmax if self.true_argmax else sp.Function('argmax')
@@ -206,6 +210,7 @@ _code_printers = {
     'mathematica': lambda expr, assign_to=None, **kw: sp.mathematica_code(expr, user_functions=_ufns, **kw),
     'octave': lambda expr, **kw: sp.octave_code(expr, user_functions=_ufns, **kw),
 }
+
 def to_code(syexpr, dialect, assign_to='y', **kw):
     '''
     Shorthand for converting the resulting Sympy expression to code in various languages.

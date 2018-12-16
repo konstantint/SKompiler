@@ -88,7 +88,10 @@ def _step(x):
     return _iif('{0}>0'.format(x), 1, 0)
 
 def _max(xs):
-    return 'MAX({0})'.format(','.join(xs))
+    if len(xs) == 1:
+        return xs[0]
+    else:
+        return 'MAX({0})'.format(','.join(xs))
 
 def _argmax(xs, maxval=None):
     if not maxval:
@@ -185,7 +188,9 @@ _builtins = {
     'IF': lambda t, a, b: a if t else b,
     'MAX': max,
     'EXP': np.exp,
-    'LOG': np.log
+    'LOG': np.log,
+    'SQRT': np.sqrt,
+    'ABS': np.abs,
 }
 _single_comparison = re.compile(r'(?<!\<)=')
 
@@ -284,9 +289,13 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     Add = is_fmt('({0}+{1})')
     Sub = is_fmt('({0}-{1})')
     LtEq = is_fmt('({0}<={1})')
+    Eq = is_fmt('({0}={1})')
     USub = is_fmt('(-{0})')
     Exp = is_fmt('EXP({0})')
+    Sqrt = is_fmt('SQRT({0})')
     Log = is_fmt('LOG({0})')
+    Max = is_fmt('MAX({0},{1})')
+    Abs = is_fmt('ABS({0})')
     Step = is_(_step)
     Sigmoid = is_fmt('(1/(1+EXP(-{0})))')
     MatVecProduct = is_(_matvecproduct)
@@ -338,6 +347,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
             return value
         
     def add_named_subexpression(self, value, name=None):
+        is_list = isinstance(value, list)
         if not isinstance(value, list):
             value = [value]
         if name is None:
@@ -350,7 +360,7 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
                     raise ValueError("Repeated names are not supported in the assign_to parameter")
                 self.code[next_output] = v
                 ref.append(next_output)
-            if len(ref) == 1:
+            if len(ref) == 1 and not is_list:
                 ref = ref[0]
             self.references[-1][name] = ref
             return ref

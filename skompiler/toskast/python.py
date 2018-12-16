@@ -18,7 +18,7 @@ $b = (2 * $a);
 '''
 #pylint: disable=wildcard-import,unused-wildcard-import,unused-argument
 import ast
-from ..ast import *
+from skompiler.ast import *
 
 
 def translate(node):
@@ -29,7 +29,10 @@ def _is(x):
 
 _funcmap = {
     'log': Log(),
-    'step': Step()
+    'exp': Exp(),
+    'step': Step(),
+    'sqrt': Sqrt(),
+    'abs': Abs(),
 }
 
 class PythonASTProcessor:

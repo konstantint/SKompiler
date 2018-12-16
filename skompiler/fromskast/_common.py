@@ -7,19 +7,6 @@ from functools import reduce
 from ..ast import AST_NODES, inline_definitions, IndexedIdentifier, NumberConstant, Exp, BinOp, IsElemwise
 
 
-def is_(val):
-    return lambda self, node: val
-
-def tolist(x):
-    if hasattr(x, 'tolist'):
-        return x.tolist()
-    else:
-        return list(x)
-
-def not_implemented(self, node, *args, **kw):
-    raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
-
-
 class ASTProcessorMeta(type):
     """A metaclass, which checks that the class defines methods for all known AST nodes.
        This is useful to verify SKAST processor implementations for completeness."""
@@ -45,6 +32,19 @@ class ASTProcessor(object, metaclass=ASTProcessorMeta):
     def __call__(self, node, **kw):
         return getattr(self, node.__class__.__name__)(node, **kw)
 
+
+def is_(val):
+    return lambda self, node: val
+
+def tolist(x):
+    if hasattr(x, 'tolist'):
+        return x.tolist()
+    else:
+        return list(x)
+
+def not_implemented(self, node, *args, **kw):
+    raise NotImplementedError("Processing of node {0} is not implemented.".format(node.__class__.__name__))
+
 def _apply_bin_op(op_node, op, left, right):
     if (not isinstance(left, list) and not isinstance(right, list)) or not isinstance(op_node, IsElemwise):
         return op(left, right)
@@ -54,8 +54,9 @@ def _apply_bin_op(op_node, op, left, right):
         raise ValueError("Sizes of the arguments do not match")
     return [op(l, r) for l, r in zip(left, right)]
 
+
 class StandardOps:
-    """Common implementation for BinOp, UnaryFunc, LFold and Let"""
+    """Common implementation for BinOp, UnaryFunc, LFold, Let and ArgMin"""
 
     def BinOp(self, node, **kw):
         """Most common implementation for BinOp,
@@ -85,6 +86,7 @@ class StandardOps:
         return self(inline_definitions(node), **kw)
 
     Reference = Definition = not_implemented
+
 
 class VectorsAsLists:
     """A partial implementation of an AST processor,
@@ -151,6 +153,7 @@ class StandardArithmetics:
     Sub = is_(lambda x, y: x - y)
     USub = is_(lambda x: -x)
     LtEq = is_(lambda x, y: x <= y)
+    Eq = is_(lambda x, y: x == y)
 
     def Sigmoid(self, _):
         return lambda x: 1/(1 + self(Exp())(-x))

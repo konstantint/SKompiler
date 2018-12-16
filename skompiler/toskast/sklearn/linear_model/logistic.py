@@ -1,7 +1,7 @@
 """
 SKLearn logistic regression to SKAST.
 """
-from skompiler.ast import UnaryFunc, Step, Sigmoid, ArgMax
+from skompiler.dsl import func
 from .base import linear_model
 from ..common import classifier, vecsumnormalize, sklearn_softmax
 
@@ -29,9 +29,9 @@ def logreg_binary(coef, intercept, inputs, method="predict_proba"):
     if method == "decision_function":
         return decision
     if method == "predict":
-        return UnaryFunc(Step(), decision)
+        return func.Step(decision)
 
-    return classifier(UnaryFunc(Sigmoid(), decision), method)
+    return classifier(func.Sigmoid(decision), method)
 
     
 def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict_proba", multi_class='ovr'):
@@ -59,10 +59,10 @@ def logreg_multiclass(coef_matrix, intercept_vector, inputs='x', method="predict
     if method == "decision_function":
         return decision
     if method == "predict":
-        return UnaryFunc(ArgMax(), decision)
+        return func.ArgMax(decision)
 
     if multi_class == 'ovr':
-        probs = vecsumnormalize(UnaryFunc(Sigmoid(), decision), coef_matrix.shape[0])
+        probs = vecsumnormalize(func.Sigmoid(decision), coef_matrix.shape[0])
     elif multi_class == 'multinomial':
         probs = sklearn_softmax(decision, coef_matrix.shape[0])
     else:

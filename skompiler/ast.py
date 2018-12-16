@@ -24,27 +24,65 @@ $z = (12.2 + (x * y[-5]));
 """
 #pylint: disable=protected-access,multiple-statements,too-few-public-methods,no-member
 from itertools import count
+from importlib import import_module
+import numpy as np
 
 
 # Each ASTNode registers its class name in this set
 AST_NODES = set([])
 
+# This is the set of conversions supported in the node.to(...) method
+TRANSLATORS = {
+    'excel': 'skompiler.fromskast.excel:translate',
+    'python': 'skompiler.fromskast.python:translate',
+    'sqlalchemy': 'skompiler.fromskast.sqlalchemy:translate',
+    'sympy': 'skompiler.fromskast.sympy:translate',
+    'string': str
+}
+
+
+#region ASTNode base -------------------------------------------------
+
+# Basic type inference (NB: not an enum to keep compatibility with Python 3.3. Maybe it is lost already, though)
+DTYPE_SCALAR = 1
+DTYPE_VECTOR = 2
+DTYPE_MATRIX = 3
+DTYPE_OTHER = 42
+DTYPE_UNKNOWN = None
+class ASTTypeError(ValueError): pass
+class UnableToDecompose(ValueError): pass
+
+
 class ASTNodeCreator(type):
     """A metaclass, which allows us to implement our AST nodes like mutable namedtuples
        with a nicer declaration syntax."""
-    def __new__(mcs, name, bases, dct, fields='', repr=None):
+    def __new__(mcs, name, bases, dct, fields='', repr=None, dtype=DTYPE_OTHER):
         if fields is None:
             return super().__new__(mcs, name, bases, dct)
         else:
             cls = super().__new__(mcs, name, bases, dct)
             cls._fields = fields.split()
             cls._template = repr
+            cls._default_dtype = dtype
             AST_NODES.add(name)
             return cls
 
+
+_singletons = {}
+
 class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
     """Base class for all AST nodes. You may not instantiate it."""
-    
+
+    def __new__(cls, *_args, **_kw):
+        # Save some memory on singletons
+        if hasattr(cls, '_fields') and not cls._fields:
+            # Singleton node
+            name = cls.__name__
+            if _singletons.get(name, None) is None:
+                _singletons[name] = super().__new__(cls)
+            return _singletons[name]
+        return super().__new__(cls)
+
     def __init__(self, *args, **kw):
         """Make sure the constructor arguments correspond to the _fields proprty"""
         
@@ -59,23 +97,87 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
         for k in self._fields:
             if k not in args:
                 raise Exception("Argument %s not provided" % k)
-            setattr(self, k, args[k])
+            self.__dict__[k] = args[k]
+        self.__dict__['_dtype'] = self._compute_dtype()
     
     def __str__(self):
         dct = {k: str(v) for k, v in vars(self).items()}
         return self._template.format(**dct)
 
     def __repr__(self):
-        return self.__class__.__name__ + '(' + ', '.join(k + '=' + repr(v) for k, v in self.__dict__.items()) + ')'
+        return self.__class__.__name__ + '(' + ', '.join(k + '=' + repr(getattr(self, k)) for k in self._fields) + ')'
 
     def __setattr__(self, field, value):
-        if field not in self._fields: raise Exception("Invalid attribute name: " + field)
-        self.__dict__[field] = value
+        raise Exception("AST nodes are immutable")
 
     def __iter__(self):
+        "Iteration over node fields. Note that the node works like a dict.items(), not like a tuple"
         for k in self._fields:
             yield k, getattr(self, k)
 
+    # Convenience routines for combining AST nodes
+    def __len__(self):
+        raise UnableToDecompose()
+    
+    def __getitem__(self, idx):
+        raise UnableToDecompose()
+
+    def __add__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(Add(), self, other)
+    
+    def __mul__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(Mul(), self, other)
+    
+    def __truediv__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(Div(), self, other)
+    
+    def __sub__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(Sub(), self, other)
+    
+    def __matmul__(self, other):
+        if isinstance(self, MatrixConstant):
+            return BinOp(MatVecProduct(), self, other)
+        else:
+            return BinOp(DotProduct(), self, other)
+
+    def __le__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(LtEq(), self, other)
+    
+    def __eq__(self, other):
+        other = self._align_scalar(other)
+        return BinOp(Eq(), self, other)
+    
+    def __call__(self, arg, arg2=None):
+        if arg2 is not None:
+            return BinOp(self, arg, arg2)
+        else:
+            return UnaryFunc(self, arg)
+    
+    def _align_scalar(self, other):
+        # If a scalar is given in a binary operation,
+        # we try to align it in length with us
+        # This is hackish and should be used with caution
+        if np.isscalar(other):
+            self_type = self._dtype
+            if self_type == DTYPE_SCALAR:
+                return NumberConstant(other)
+            elif self_type == DTYPE_VECTOR:
+                return VectorConstant([other]*len(self))
+            else:
+                raise ASTTypeError("Unable to align scalar with a node of type {0}".format(self.__class__.__name__))
+        else:
+            return other
+
+    # Type inference
+    def _compute_dtype(self):
+        return self._default_dtype
+
+    # Convenience routines for evaluating AST nodes
     def lambdify(self):
         """
         Converts the SKAST expression to an executable Python function.
@@ -100,6 +202,8 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
         "Convenience routine for evaluating expressions"
         return self.lambdify()(**inputs)
 
+    # The main convenience function, which converts the node to any of the
+    # supported formats
     def to(self, target, *args, **kw):
         """Convenience routine for converting expressions to any
            supported output form.
@@ -142,78 +246,187 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
                     skompiler.fromskast.<dialect[0]>.translate.
 
         '"""
-        module, *dialect = target.split('/')
-        try:
-            from importlib import import_module
-            mod = import_module('skompiler.fromskast.{0}'.format(module))
-        except ModuleNotFoundError:
-            raise ValueError("Invalid target: {0}".format(target))
-        return mod.translate(self, *dialect, *args, **kw)
+        translator, *dialect = target.split('/')
+        if translator not in TRANSLATORS:
+            raise ValueError("Invalid translator: {0}".format(translator))
+        translator = TRANSLATORS[translator]
+        if not hasattr(translator, '__call__'):
+            module, callable = translator.split(':')
+            mod = import_module(module)
+            translator = getattr(mod, callable)
+        return translator(self, *dialect, *args, **kw)
+#endregion
+
+
+#region AST node types ---------------------------------------------
 
 # Unary operators and functions
-class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'): pass
+class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'):
+    def __len__(self):
+        if isinstance(self.op, IsElemwise):
+            return len(self.arg)
+        else:
+            raise UnableToDecompose()
+    
+    def __getitem__(self, index):
+        if isinstance(self.op, IsElemwise):
+            return UnaryFunc(self.op, self.arg[index])
+        else:
+            raise UnableToDecompose()
+
+    def _compute_dtype(self):
+        if self.arg._dtype not in [DTYPE_UNKNOWN, DTYPE_SCALAR, DTYPE_VECTOR]:
+            raise ASTTypeError()
+        if isinstance(self.op, IsElemwise):
+            return self.arg._dtype
+        else:
+            return self.op._out_dtype
 
 # Some unary functions distribute over vectors. We mark them as such
 class IsElemwise: pass
 class USub(ASTNode, IsElemwise, repr='-'): pass     # Unary minus operator
 class Exp(ASTNode, IsElemwise, repr='exp'): pass
 class Log(ASTNode, IsElemwise, repr='log'): pass
+class Abs(ASTNode, IsElemwise, repr='abs'): pass
+class Sqrt(ASTNode, IsElemwise, repr='sqrt'): pass
 class Step(ASTNode, IsElemwise, repr='step'): pass  # Heaviside step (x > 0)
 class Sigmoid(ASTNode, IsElemwise, repr='sigmoid'): pass
 
 # Some functions take vector arguments but do not distribute elementwise
-class VecSum(ASTNode, repr='sum'): pass
-class VecMax(ASTNode, repr='max'): pass
-class ArgMax(ASTNode, repr='argmax'): pass
-class Softmax(ASTNode, repr='softmax'): pass
+class VecSum(ASTNode, repr='sum'):
+    _out_dtype = DTYPE_SCALAR
+class VecMax(ASTNode, repr='max'):
+    _out_dtype = DTYPE_SCALAR
+class ArgMax(ASTNode, repr='argmax'):
+    _out_dtype = DTYPE_SCALAR
+class Softmax(ASTNode, repr='softmax'):
+    _out_dtype = DTYPE_VECTOR
 
 # Binary operators
-class BinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'): pass
+def _common_dtype(nodes):
+    dtypes = {n._dtype for n in nodes if n._dtype is not DTYPE_UNKNOWN}
+    if not dtypes:
+        return DTYPE_UNKNOWN
+    elif len(dtypes) == 2:
+        raise ASTTypeError("Mismatching operand types")
+    else:
+        result = next(iter(dtypes))
+        if result not in [DTYPE_SCALAR, DTYPE_VECTOR]:
+            raise ASTTypeError("Arguments must be scalars or vectors")
+        return result
+
+
+class BinOp(ASTNode, fields='op left right', repr='({left} {op} {right})'):
+    def __len__(self):
+        if isinstance(self.op, IsElemwise) or isinstance(self.op, MatVecProduct):
+            return len(self.left)
+        else:
+            raise UnableToDecompose()
+    
+    def __getitem__(self, index):
+        if isinstance(self.op, IsElemwise):
+            return BinOp(self.op, self.left[index], self.right[index])
+        elif isinstance(self.op, MatVecProduct):
+            return BinOp(DotProduct(), self.left[index], self.right)
+        else:
+            raise UnableToDecompose()
+
+    def _compute_dtype(self):
+        if isinstance(self.op, IsElemwise):
+            return _common_dtype([self.left, self.right])
+        else:
+            return self.op._out_dtype
+
 class Mul(ASTNode, IsElemwise, repr='*'): pass
 class Add(ASTNode, IsElemwise, repr='+'): pass
 class Sub(ASTNode, IsElemwise, repr='-'): pass
 class Div(ASTNode, IsElemwise, repr='/'): pass
-class DotProduct(ASTNode, repr='v@v'): pass
-class MatVecProduct(ASTNode, repr='m@v'): pass
+class Max(ASTNode, IsElemwise, repr='max'): pass
+class DotProduct(ASTNode, repr='v@v'):
+    _out_dtype = DTYPE_SCALAR
+class MatVecProduct(ASTNode, repr='m@v'):
+    _out_dtype = DTYPE_VECTOR
 
-# Left-associative fold of an operator over a list of arguments
-# E.g. sum(xs) := LFold(Add(), xs)
 class LFold(ASTNode, fields='op elems'):
+    """
+    Left-associative fold of an operator over a list of arguments
+    E.g. sum(xs) := LFold(Add(), xs)
+    This could be represented as a sequence of binary ops, but having a
+    dedicated operator may significantly reduce the depth of AST trees with long sums
+    which you may find in ensemble classifiers.
+    Deep trees are bad because you run the risk of hitting system recursion limit when processing
+    them via recursive parsers (as is the case currently)
+    """
+
     def __str__(self):
         return str(self.op).join(str(e) for e in self.elems)
+
+    def __getitem__(self, idx):
+        return LFold(self.op, [el[idx] for el in self.elems])
+
+    def __len__(self):
+        if not self.elems:
+            raise ASTTypeError("Empty LFolds are not allowed")
+        return len(self.elems[0])
+
+    def _compute_dtype(self):
+        return _common_dtype(self.elems)
 
 # Boolean binary ops
 class IsBoolean: pass
 class LtEq(ASTNode, IsElemwise, IsBoolean, repr='<='): pass
+class Eq(ASTNode, IsElemwise, IsBoolean, repr='=='): pass
+
 
 # IfThenElse
-class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='(if {test} then {iftrue} else {iffalse})'): pass
+class IfThenElse(ASTNode, fields='test iftrue iffalse', repr='(if {test} then {iftrue} else {iffalse})'):
+    def __len__(self):
+        return len(self.iftrue)
+    
+    def __getitem__(self, index):
+        return IfThenElse(self.test, self.iftrue[index], self.iffalse[index])
+
+    def _compute_dtype(self):
+        return _common_dtype([self.iftrue, self.iffalse])
 
 # Special function
-class MakeVector(ASTNode, fields='elems'):
+class MakeVector(ASTNode, fields='elems', dtype=DTYPE_VECTOR):
     def __str__(self):
         elems = ', '.join(str(e) for e in self.elems)
         return '[{0}]'.format(elems)
-    def _decompose(self):
-        return self.elems
+
+    def __getitem__(self, idx):
+        return self.elems[idx]
+
+    def __len__(self):
+        return len(self.elems)
 
 # Leaf nodes
-class VectorIdentifier(ASTNode, fields='id size', repr='{id}'):
-    def _decompose(self):
-        return [IndexedIdentifier(self.id, i, self.size) for i in range(self.size)]
+class IsAtom: pass
+class VectorIdentifier(ASTNode, IsAtom, fields='id size', repr='{id}', dtype=DTYPE_VECTOR):
+    def __getitem__(self, index):
+        return IndexedIdentifier(self.id, index, self.size)
+    def __len__(self):
+        return self.size
 
-class Identifier(ASTNode, fields='id', repr='{id}'): pass
+class Identifier(ASTNode, IsAtom, fields='id', repr='{id}', dtype=DTYPE_SCALAR): pass
 
 # Note that IndexedIdentifier is not a generic subscript operator. Its field must contain a string id and an integer index as well as the
 # total size of the vector being indexed.
 # This lets us "fake" vector input variables in contexts like SQL, where we interpret IndexedIdentifier("x", 1, 10) as a concatenated name "x1"
-class IndexedIdentifier(ASTNode, fields='id index size', repr='{id}[{index}]'): pass
-class NumberConstant(ASTNode, fields='value', repr='{value}'): pass
-class VectorConstant(ASTNode, fields='value', repr='{value}'):
-    def _decompose(self):
-        return [NumberConstant(v) for v in self.value]
+class IndexedIdentifier(ASTNode, IsAtom, fields='id index size', repr='{id}[{index}]', dtype=DTYPE_SCALAR): pass
+class NumberConstant(ASTNode, IsAtom, fields='value', repr='{value}', dtype=DTYPE_SCALAR): pass
+class VectorConstant(ASTNode, IsAtom, fields='value', repr='{value}', dtype=DTYPE_VECTOR):
+    def __getitem__(self, index):
+        return NumberConstant(self.value[index])
+    def __len__(self):
+        return len(self.value)
 
-class MatrixConstant(ASTNode, fields='value', repr='{value}'): pass
+class MatrixConstant(ASTNode, IsAtom, fields='value', repr='{value}', dtype=DTYPE_MATRIX):
+    def __len__(self):
+        return len(self.value)
+    def __getitem__(self, index):
+        return VectorConstant(self.value[index])
 
 # Variable definitions
 # NB: at the moment let-scopes do not capture the outside variables.
@@ -223,12 +436,23 @@ class Let(ASTNode, fields='defs body'):
     def __str__(self):
         defs = ';\n'.join(str(d) for d in self.defs)
         return '{\n' + defs + ';\n' + str(self.body) + '\n}'
+    def __len__(self):
+        return len(self.body)
+    def __getitem__(self, idx):
+        return self.body[idx]
+    def _compute_dtype(self):
+        return self.body._dtype
 
-class Definition(ASTNode, fields='name body', repr='${name} = {body}'): pass
-class Reference(ASTNode, fields='name', repr='${name}'): pass
+class Definition(ASTNode, fields='name body', repr='${name} = {body}'):
+    def _compute_dtype(self):
+        return self.body._dtype
+
+class Reference(ASTNode, fields='name', repr='${name}', dtype=DTYPE_UNKNOWN): pass
+
+#endregion
 
 
-# --------------------- Utility functions -----------------------
+#region Node processing functions -----------------------
 def map_list(node_list, fn, call_on_enter=False, call_on_exit=True):
     new_list = []
     changed = False
@@ -267,6 +491,7 @@ def map_tree(node, fn, call_on_enter=False, call_on_exit=True):
     if call_on_exit: node = fn(node, False)
     return node
 
+
 def substitute_references(node, definitions):
     """Substitutes all references in the given expression with ones from the `definitions` dictionary.
        If any substitutions were made, returns a new node. Otherwise returns the same node.
@@ -279,7 +504,7 @@ def substitute_references(node, definitions):
     >>> expr = BinOp(Add(), Identifier('x'), NumberConstant(2))
     >>> substitute_references(expr, {}) is expr
     True
-    >>> expr.left = Reference('x')
+    >>> expr = replace(expr, left = Reference('x'))
     >>> substitute_references(expr, {})
     Traceback (most recent call last):
     ...
@@ -330,7 +555,7 @@ def inline_definitions(let_expr):
     return substitute_references(let_expr.body, defs)
 
 
-# --------- Let expression extraction ---------- #
+# Let expression extraction
 def _scope_id_gen():
     yield ''  # Do not mangle the scope of the first let we find
     yield from map('_{0}'.format, count())
@@ -368,8 +593,8 @@ def merge_let_scopes(expr):
     >>> let1 = skast("x=1; y=2; x+y")   # 3
     >>> let2 = skast("x=3; y=4; x+2*y") # 11
     >>> let3 = skast("x=0; y=0; 3*x+y") # 20
-    >>> let3.defs[0].body=let1
-    >>> let3.defs[1].body=let2
+    >>> let3.defs[0].__dict__['body']=let1
+    >>> let3.defs[1].__dict__['body']=let2
     >>> merged = merge_let_scopes(let3)
     >>> print(merged)
     {
@@ -392,17 +617,17 @@ def merge_let_scopes(expr):
         return Let(lc.definitions, expr)
 
 
-# ---------- Helper functions for working with AST nodes
-# We don't implement them as methods to avoid potential conflicts with
+# Node copying and field replacing methods
+# NB: We don't implement them as methods to avoid potential conflicts with
 # field names ("lambdify", "evaluate" and "to" are the only exceptions as they might be used more often)
 
 def copy(node):
     """
     Copies the node.
 
-    >>> o = BinOp('+', 2, 3)
+    >>> o = BinOp(Add(), NumberConstant(2), NumberConstant(3))
     >>> o2 = copy(o)
-    >>> o.op = '-'
+    >>> o.__dict__['op'] = Sub()
     >>> print(o, o2)
     (2 - 3) (2 + 3)
     """
@@ -412,22 +637,19 @@ def replace(node, **kw):
     """Equivalent to namedtuple's _replace.
     When **kw is empty simply returns node itself.
     
-    >>> o = BinOp('+', 2, 3)
-    >>> o2 = replace(o, op='-', left=3)
+    >>> o = BinOp(Add(), NumberConstant(2), NumberConstant(3))
+    >>> o2 = replace(o, op=Sub(), left=NumberConstant(3))
     >>> print(o, o2)
     (2 + 3) (3 - 3)
     """
     if kw:
-        new_node = copy(node)
-        for k, v in kw.items():
-            setattr(new_node, k, v)
-        return new_node
+        vals = dict(node)
+        vals.update(**kw)
+        return node.__class__(**vals)
     else:
         return node
 
 def decompose(node):
-    """Some nodes correspond to vectors and can be "decomposed" to their
-       parts via the _decompose method."""
-    if not hasattr(node, '_decompose'):
-        raise ValueError("Cannot determine number of features")
-    return node._decompose()
+    return [node[i] for i in range(len(node))]
+
+#endregion

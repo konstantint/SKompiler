@@ -1,10 +1,7 @@
 """
 SKLearn linear model to SKAST.
 """
-import numpy as np
-from skompiler.ast import BinOp, DotProduct, VectorConstant,\
-                          Add, NumberConstant, MatrixConstant, MatVecProduct, MakeVector
-
+from skompiler.dsl import const
 
 def linear_model(coef, intercept, inputs):
     """
@@ -25,12 +22,4 @@ def linear_model(coef, intercept, inputs):
     elif not single_valued and (coef.ndim != 2 or intercept.ndim != 1):
         raise ValueError("Multi-valued linear model must have a 2D coefficient matrix and a 1D intercept vector")
 
-    if isinstance(inputs, list):
-        inputs = MakeVector(inputs)
-    
-    if single_valued:
-        dec = BinOp(DotProduct(), VectorConstant(coef), inputs)
-        return BinOp(Add(), dec, NumberConstant(intercept))
-    else:
-        dec = BinOp(MatVecProduct(), MatrixConstant(coef), inputs)
-        return BinOp(Add(), dec, VectorConstant(np.asarray(intercept)))
+    return const(coef) @ inputs + const(intercept)

@@ -5,7 +5,8 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum
+from sqlalchemy.sql.selectable import Join
+from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum, Max, IsAtom
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
                      not_implemented, prepare_assign_to, id_generator, denumpyfy
 
@@ -58,7 +59,6 @@ def translate(node, dialect=None, assign_to='y', component=None,
     FROM data)
      SELECT _tmp1.f1 + _tmp2.f1 AS y 
     FROM _tmp1 JOIN _tmp2 ON _tmp1.__id__ = _tmp2.__id__
-
     >>> expr = skast('x+y')
     >>> stbl = sa.select([sa.column('id'), sa.column('x'), sa.column('y')], from_obj=sa.table('test')).cte('_data')
     >>> print(translate(expr, 'sqlite', multistage=False, from_obj=stbl))
@@ -87,6 +87,8 @@ def translate(node, dialect=None, assign_to='y', component=None,
 
 
 def _max(xs):
+    if len(xs) == 1:
+        return xs[0]
     return reduce(greatest, xs)
 
 def _sum(iterable):
@@ -111,6 +113,12 @@ def _dotproduct(xs, ys):
 def _step(x):
     return _iif(x > 0, 1, 0)
 
+def extract_tables(from_obj):
+    if isinstance(from_obj, Join):
+        return extract_tables(from_obj.left) + extract_tables(from_obj.right)
+    else:
+        return [from_obj]
+
 def _merge(tbl1, tbl2):
     if tbl1 is None:
         return tbl2
@@ -118,10 +126,15 @@ def _merge(tbl1, tbl2):
         return tbl1
     if tbl1 is tbl2:
         return tbl1
-    joined = tbl1.join(tbl2, tbl1.key_ == tbl2.key_)
-    joined.key_ = tbl1.key_
+    # Either of the arguments may be a join clause and these
+    # may include repeated elements. If so, we have to extract them and recombine.
+    all_tables = list(sorted(set(extract_tables(tbl1) + extract_tables(tbl2)), key=lambda x: x.name))
+    tbl1 = all_tables[0]
+    joined = tbl1
+    for tbl_next in all_tables[1:]:
+        joined = joined.join(tbl_next, onclause=tbl1.key_ == tbl_next.key_)
+        joined.key_ = tbl1.key_
     return joined
-
 
 Result = namedtuple('Result', 'cols from_obj')
 
@@ -204,7 +217,16 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
             return Result(op(left.cols, right.cols), _merge(left.from_obj, right.from_obj))
         elif len(left.cols) != len(right.cols):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))
-        return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
+        elif isinstance(node.op, Max):
+            # Max is implemented as (if x > y then x else y), hence to avoid double-computation,
+            # we save x and y in separate CTE's
+            if not isinstance(node.left, IsAtom):
+                left = self._make_cte(left)
+            if not isinstance(node.right, IsAtom):
+                right = self._make_cte(right)
+            return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
+        else:
+            return Result([op(lc, rc) for lc, rc in zip(left.cols, right.cols)], _merge(left.from_obj, right.from_obj))
 
     def MakeVector(self, vec):
         result = []
@@ -215,9 +237,13 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
             if len(el.cols) != 1:
                 raise ValueError("MakeVector expects a list of scalars")
             result.append(el.cols[0])
-        if len(tbls) != 1:
-            raise NotImplementedError("MakeVector currently only supports concatenation of values from the same source")
-        return Result(result, list(tbls)[0])
+        tbls = list(tbls)
+        target_table = tbls[0]
+        for tbl in tbls[1:]:
+            new_joined = target_table.join(tbl, onclause=target_table.key_ == tbl.key_)
+            new_joined.key_ = target_table.key_
+            target_table = new_joined
+        return Result(result, target_table)
 
     def IfThenElse(self, node):
         test, iftrue, iffalse = self(node.test), self(node.iftrue), self(node.iffalse)
@@ -229,7 +255,10 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     DotProduct = is_(_dotproduct)
     Exp = is_(sa.func.exp)
     Log = is_(sa.func.log)
+    Sqrt = is_(sa.func.sqrt)
+    Abs = is_(sa.func.abs)
     Step = is_(_step)
+    Max = is_(lambda x, y: _max([x, y]))
 
     # ------ The actual "multi-stage" logic -----
     def Let(self, node, **kw):
@@ -261,6 +290,8 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
         return Result(new_cols, new_tbl)
 
     def _argmax(self, result):
+        if len(result.cols) == 1:
+            return Result([sa.literal(0)], self.from_obj)
         features = self._make_cte(result)
         max_val = Result([_max(features.cols)], features.from_obj)
         max_val = self._make_cte(max_val, ['_max'])

@@ -1,0 +1,3 @@
+"""
+Decomposition methods
+"""

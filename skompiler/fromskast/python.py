@@ -31,8 +31,8 @@ In general, use utils.evaluate to evaluate SKAST expressions.
 """
 import ast
 import numpy as np
-from ..ast import USub, Identifier, NumberConstant, IsBoolean, merge_let_scopes
-from ._common import ASTProcessor, StandardOps
+from ..ast import USub, Identifier, NumberConstant, IsBoolean, merge_let_scopes, Max
+from ._common import ASTProcessor, StandardOps, denumpyfy
 
 
 _linearg = dict(lineno=1, col_offset=0) # Most Python AST nodes require these
@@ -69,12 +69,6 @@ def translate(node, dialect=None):
     else:
         raise ValueError("Unknown dialect: {0}".format(dialect))
 
-def _denumpyfy(value):
-    if hasattr(value, 'dtype'):
-        return value.item()
-    else:
-        return value
-
 def _ident(name):
     "Shorthand for defining methods in PythonASTWriter (see code below)"
     return lambda self, x: self(Identifier(name))
@@ -103,11 +97,11 @@ class PythonASTWriter(ASTProcessor, StandardOps):
                              ctx=ast.Load(), **_linearg)
 
     def NumberConstant(self, num):
-        return ast.Num(n=_denumpyfy(num.value), **_linearg)
+        return ast.Num(n=denumpyfy(num.value), **_linearg)
 
     def VectorConstant(self, vec):
         result = ast.parse('__np__.array()', mode='eval').body
-        result.args = [ast.List(elts=[ast.Num(n=_denumpyfy(el), **_linearg) for el in vec.value],
+        result.args = [ast.List(elts=[ast.Num(n=denumpyfy(el), **_linearg) for el in vec.value],
                                 ctx=ast.Load(), **_linearg)]
         return result
 
@@ -119,7 +113,7 @@ class PythonASTWriter(ASTProcessor, StandardOps):
 
     def MatrixConstant(self, mat):
         result = ast.parse('__np__.array()', mode='eval').body
-        result.args = [ast.List(elts=[ast.List(elts=[ast.Num(n=_denumpyfy(el), **_linearg) for el in row],
+        result.args = [ast.List(elts=[ast.List(elts=[ast.Num(n=denumpyfy(el), **_linearg) for el in row],
                                                ctx=ast.Load(), **_linearg) for row in mat.value], ctx=ast.Load(), **_linearg)]
         return result
 
@@ -133,6 +127,8 @@ class PythonASTWriter(ASTProcessor, StandardOps):
         op, left, right = self(node.op), self(node.left), self(node.right)
         if isinstance(node.op, IsBoolean):
             return ast.Compare(left=left, ops=[op], comparators=[right], **_linearg)
+        elif isinstance(node.op, Max):
+            return ast.Call(func=self(node.op), args=[self(node.left), self(node.right)], keywords=[], **_linearg)
         else:
             return ast.BinOp(op=op, left=left, right=right, **_linearg)
     
@@ -153,13 +149,16 @@ class PythonASTWriter(ASTProcessor, StandardOps):
 
     # Functions
     Exp = _ident('__exp__')
+    Sqrt = _ident('__sqrt__')
     Log = _ident('__log__')
     Step = _ident('__step__')
     VecSum = _ident('__sum__')
     ArgMax = _ident('__argmax__')
     Sigmoid = _ident('__sigmoid__')
     Softmax = _ident('__softmax__')
-    VecMax = _ident('__max__')
+    VecMax = _ident('__vecmax__')
+    Max = _ident('__max__')
+    Abs = _ident('__abs__')
 
     # Operators
     Mul = _is(ast.Mult())
@@ -172,6 +171,7 @@ class PythonASTWriter(ASTProcessor, StandardOps):
 
     # Predicates
     LtEq = _is(ast.LtE())
+    Eq = _is(ast.Eq())
 
 # ------------- Evaluation of Python AST-s --------------- #
 
@@ -184,10 +184,13 @@ def _softmax(X):
 _eval_vars = {
     '__np__': np,
     '__exp__': np.exp,
+    '__sqrt__': np.sqrt,
     '__log__': np.log,
     '__sum__': np.sum,
     '__argmax__': np.argmax,
-    '__max__': np.max,
+    '__vecmax__': np.max,
+    '__max__': np.maximum,
+    '__abs__': np.abs,
     '__sigmoid__': lambda z: 1.0/(1.0 + np.exp(-z)),
     '__sum_normalize__': lambda x: x / np.sum(x),
     '__softmax__': lambda x: _softmax([x])[0, :],
