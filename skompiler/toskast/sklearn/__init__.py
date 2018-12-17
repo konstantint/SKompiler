@@ -21,6 +21,7 @@ from sklearn.pipeline import Pipeline
 
 from skompiler.dsl import ident, vector
 
+from .._common import prepare_inputs
 from .linear_model.logistic import logreg_binary, logreg_multiclass
 from .linear_model.base import linear_model
 from .tree.base import decision_tree
@@ -78,10 +79,10 @@ def _(model, inputs, method):
         if not ovr:
             raise NotImplementedError("Logistic regression with binary outcomes and multinomial outputs is not implemented")
             # ... It's not too hard, actually, just need to find the 15 minutes needed to implement it.
-        return logreg_binary(model.coef_.ravel(), model.intercept_[0], inputs=_prepare_inputs(inputs, model.coef_.shape[-1]), method=method)
+        return logreg_binary(model.coef_.ravel(), model.intercept_[0], inputs=prepare_inputs(inputs, model.coef_.shape[-1]), method=method)
     else: # Multiclass logreg
         return logreg_multiclass(model.coef_, model.intercept_, method=method,
-                                 inputs=_prepare_inputs(inputs, model.coef_.shape[-1]), multi_class='ovr' if ovr else 'multinomial')
+                                 inputs=prepare_inputs(inputs, model.coef_.shape[-1]), multi_class='ovr' if ovr else 'multinomial')
 
 @register(SVC, ['decision_function', 'predict'])
 def _(model, inputs, method):
@@ -93,54 +94,54 @@ def _(model, inputs, method):
     if len(model.classes_) > 2 and method != 'predict':
         raise NotImplementedError("Translation not implemented for non-binary SVC") # See sklearn.utils.multiclass._ovr_decision_function
     if model.coef_.shape[0] == 1: # Binary
-        return logreg_binary(model.coef_.ravel(), model.intercept_[0], inputs=_prepare_inputs(inputs, model.coef_.shape[-1]), method=method)
+        return logreg_binary(model.coef_.ravel(), model.intercept_[0], inputs=prepare_inputs(inputs, model.coef_.shape[-1]), method=method)
     else: # Multiclass logreg
         return logreg_multiclass(model.coef_, model.intercept_, method=method,
-                                 inputs=_prepare_inputs(inputs, model.coef_.shape[-1]), multi_class='ovr')
+                                 inputs=prepare_inputs(inputs, model.coef_.shape[-1]), multi_class='ovr')
 
 @register(SVR, ['predict'])
 def _(model, inputs, method):
     if isinstance(model, SVR) and model.kernel != 'linear':
         raise NotImplementedError("Nonlinear SVR not implemented")
-    return linear_model(model.coef_.ravel(), model.intercept_.item(), _prepare_inputs(inputs, model.coef_.shape[-1]))
+    return linear_model(model.coef_.ravel(), model.intercept_.item(), prepare_inputs(inputs, model.coef_.shape[-1]))
 
 @register(LinearModel, ['predict'])
 def _(model, inputs, method):
-    return linear_model(model.coef_.ravel(), model.intercept_, _prepare_inputs(inputs, model.coef_.shape[-1]))
+    return linear_model(model.coef_.ravel(), model.intercept_, prepare_inputs(inputs, model.coef_.shape[-1]))
     
 @register(BaseDecisionTree, ['predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
     if isinstance(model, DecisionTreeRegressor) and method != 'predict':
         raise ValueError("Method {0} is not supported for DecisionTreeRegressor".format(method))
-    return decision_tree(model.tree_, _prepare_inputs(inputs, model.n_features_), method)
+    return decision_tree(model.tree_, prepare_inputs(inputs, model.n_features_), method)
 
 @register(RandomForestClassifier, ['predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return random_forest_classifier(model, _prepare_inputs(inputs, model.n_features_), method)
+    return random_forest_classifier(model, prepare_inputs(inputs, model.n_features_), method)
 
 @register(RandomForestRegressor, ['predict'])
 def _(model, inputs, method):
-    return random_forest_regressor(model, _prepare_inputs(inputs, model.n_features_))
+    return random_forest_regressor(model, prepare_inputs(inputs, model.n_features_))
 
 @register(GradientBoostingClassifier, ['decision_function'])
 def _(model, inputs, method):
-    return gradient_boosting_classifier(model, _prepare_inputs(inputs, model.n_features_))
+    return gradient_boosting_classifier(model, prepare_inputs(inputs, model.n_features_))
 
 @register(GradientBoostingRegressor, ['predict'])
 def _(model, inputs, method):
-    return gradient_boosting_regressor(model, _prepare_inputs(inputs, model.n_features_))
+    return gradient_boosting_regressor(model, prepare_inputs(inputs, model.n_features_))
 
 @register(AdaBoostClassifier, ['decision_function', 'predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return adaboost_classifier(model, _prepare_inputs(inputs, model.estimators_[0].n_features_), method)
+    return adaboost_classifier(model, prepare_inputs(inputs, model.estimators_[0].n_features_), method)
 
 @register(KMeans, ['transform', 'predict'])
 def _(model, inputs, method):
-    return k_means(model.cluster_centers_, _prepare_inputs(inputs, model.cluster_centers_.shape[1]), method)
+    return k_means(model.cluster_centers_, prepare_inputs(inputs, model.cluster_centers_.shape[1]), method)
 
 @register(_BasePCA, ['transform'])
 def _(model, inputs, method):
-    return pca(model, _prepare_inputs(inputs, model.components_.shape[1]))
+    return pca(model, prepare_inputs(inputs, model.components_.shape[1]))
 
 @register(Pipeline, ['predict', 'predict_proba', 'decision_function', 'predict_log_proba', 'transform'])
 def _(model, inputs, method):
@@ -157,23 +158,23 @@ def _(model, inputs, method):
 
 @register(MLPRegressor, ['predict'])
 def _(model, inputs, method):
-    return mlp(model, _prepare_inputs(inputs, len(model.coefs_[0])))
+    return mlp(model, prepare_inputs(inputs, len(model.coefs_[0])))
 
 @register(MLPClassifier, ['predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return mlp_classifier(model, _prepare_inputs(inputs, len(model.coefs_[0])), method)
+    return mlp_classifier(model, prepare_inputs(inputs, len(model.coefs_[0])), method)
 
 @register(Binarizer, ['transform'])
 def _(model, inputs, method):
-    return binarize(model.threshold, _prepare_inputs(inputs))
+    return binarize(model.threshold, prepare_inputs(inputs))
 
 @register(MinMaxScaler, ['transform'])
 def _(model, inputs, method):
-    return scale(model.scale_, model.min_, _prepare_inputs(inputs, len(model.scale_)))
+    return scale(model.scale_, model.min_, prepare_inputs(inputs, len(model.scale_)))
 
 @register(MaxAbsScaler, ['transform'])
 def _(model, inputs, method):
-    return unscale(model.scale_, _prepare_inputs(inputs, len(model.scale_)))
+    return unscale(model.scale_, prepare_inputs(inputs, len(model.scale_)))
 
 @register(StandardScaler, ['transform'])
 def _(model, inputs, method):
@@ -182,25 +183,8 @@ def _(model, inputs, method):
         n = len(model.mean_)
     elif model.with_std:
         n = len(model.scale_)
-    return standard_scaler(model, _prepare_inputs(inputs, n))
+    return standard_scaler(model, prepare_inputs(inputs, n))
 
 @register(Normalizer, ['transform'])
 def _(model, inputs, method):
-    return normalizer(model.norm, _prepare_inputs(inputs))
-
-def _prepare_inputs(inputs, n_features=None):
-    if hasattr(inputs, '__next__'):
-        # Unroll iterators
-        inputs = [next(inputs) for i in range(n_features)]
-    if isinstance(inputs, str):
-        if not n_features:
-            raise ValueError("Impossible to determine number of input variables")
-        return ident(inputs, size=n_features)
-    elif isinstance(inputs, list):
-        if n_features is not None and len(inputs) != n_features:
-            raise ValueError("The number of inputs must match the number of features in the tree")
-        if isinstance(inputs[0], str):
-            inputs = [ident(el) for el in inputs]
-        return vector(inputs)
-    else:
-        return inputs
+    return normalizer(model.norm, prepare_inputs(inputs))

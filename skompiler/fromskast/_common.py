@@ -4,7 +4,7 @@ Base class for AST processors and functions, useful within multiple implementati
 #pylint: disable=not-callable
 from itertools import count
 from functools import reduce
-from ..ast import AST_NODES, inline_definitions, IndexedIdentifier, NumberConstant, Exp, BinOp, IsElemwise
+from ..ast import AST_NODES, inline_definitions, IndexedIdentifier, NumberConstant, Exp, BinOp, IsElemwise, Reference
 
 
 class ASTProcessorMeta(type):
@@ -86,6 +86,9 @@ class StandardOps:
         return self(inline_definitions(node), **kw)
 
     Reference = Definition = not_implemented
+
+    def TypedReference(self, node, **_):
+        return self(Reference(node.name))
 
 
 class VectorsAsLists:

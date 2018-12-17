@@ -126,6 +126,21 @@ So far this has been a fun two-weekends-long project, hence translation is imple
 
 Even though this particular example probably does not make much sense from a machine learning perspective, it would happily compile both to Excel and SQL forms none the less.
 
+Rudimentary support for theano-backed Keras models (covering the basic `Dense` layer for now) is also available. The following would work, for example:
+
+    import os
+    os.environ['KERAS_BACKEND'] = 'theano'
+    
+    from keras.models import Sequential
+    from keras.layers import Dropout, Dense
+    m = Sequential([Dense(3, activation='tanh', input_shape=(4,)),
+                    Dense(3, activation='linear'),
+                    Dropout(0.5),
+                    Dense(3, activation='sigmoid')])
+
+    from skompiler import skompile
+    skompile(m.predict)
+
 ### How it works
 
 The `skompile` procedure translates a given method into an intermediate syntactic representation (called SKompiler AST or SKAST). This representation uses a limited number of operations so it is reasonably simple to translate it into other forms.

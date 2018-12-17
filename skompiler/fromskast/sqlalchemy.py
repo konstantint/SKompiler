@@ -5,7 +5,7 @@ from functools import reduce
 from collections import namedtuple
 import numpy as np
 import sqlalchemy as sa
-from sqlalchemy.sql.selectable import Join
+from sqlalchemy.sql.selectable import Join, FromGrouping
 from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum, Max, IsAtom
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist,\
                      not_implemented, prepare_assign_to, id_generator, denumpyfy
@@ -114,7 +114,9 @@ def _step(x):
     return _iif(x > 0, 1, 0)
 
 def extract_tables(from_obj):
-    if isinstance(from_obj, Join):
+    if isinstance(from_obj, FromGrouping):
+        return extract_tables(from_obj.element)
+    elif isinstance(from_obj, Join):
         return extract_tables(from_obj.left) + extract_tables(from_obj.right)
     else:
         return [from_obj]
@@ -214,6 +216,9 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
     def BinOp(self, node, **kw):
         left, right, op = self(node.left), self(node.right), self(node.op)
         if not isinstance(node.op, IsElemwise):
+            # MatVecProduct requires atomizing the argument, otherwise it will be repeated multiple times in the output
+            if not isinstance(node.right, IsAtom):
+                right = self._make_cte(right)
             return Result(op(left.cols, right.cols), _merge(left.from_obj, right.from_obj))
         elif len(left.cols) != len(right.cols):
             raise ValueError("Mismatching operand dimensions in {0}".format(repr(node.op)))

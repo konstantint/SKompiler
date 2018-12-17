@@ -1,3 +1,8 @@
+Version 0.5.1
+-------------
+
+    - Rudimentary support for Keras MLP models.
+
 Version 0.5
 -------------
 

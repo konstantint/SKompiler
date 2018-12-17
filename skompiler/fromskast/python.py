@@ -146,6 +146,7 @@ class PythonASTWriter(ASTProcessor, StandardOps):
 
     def Reference(self, ref):
         return ast.Name(id='_def_' + ref.name, ctx=ast.Load(), **_linearg)
+    TypedReference = Reference
 
     # Functions
     Exp = _ident('__exp__')

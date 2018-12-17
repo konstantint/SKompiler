@@ -115,6 +115,9 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
         for k in self._fields:
             yield k, getattr(self, k)
 
+    def __bool__(self):
+        return True
+    
     # Convenience routines for combining AST nodes
     def __len__(self):
         raise UnableToDecompose()
@@ -139,7 +142,7 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
         return BinOp(Sub(), self, other)
     
     def __matmul__(self, other):
-        if isinstance(self, MatrixConstant):
+        if self._dtype == DTYPE_MATRIX:
             return BinOp(MatVecProduct(), self, other)
         else:
             return BinOp(DotProduct(), self, other)
@@ -449,6 +452,13 @@ class Definition(ASTNode, fields='name body', repr='${name} = {body}'):
 
 class Reference(ASTNode, fields='name', repr='${name}', dtype=DTYPE_UNKNOWN): pass
 
+# Sometimes marking the type and dimension of the object referenced to is convenient
+class TypedReference(ASTNode, fields='name dtype size', repr='${name}'):
+    def _compute_dtype(self):
+        return self.dtype
+    def __len__(self):
+        return self.size
+
 #endregion
 
 
@@ -516,7 +526,7 @@ def substitute_references(node, definitions):
     >>> assert new_expr.right is expr.right
     """
     def fn(node, _):
-        if isinstance(node, Reference):
+        if isinstance(node, Reference) or isinstance(node, TypedReference):
             if node.name not in definitions:
                 raise ValueError("Unknown variable reference: " + node.name)
             else:

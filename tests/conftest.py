@@ -2,7 +2,9 @@
 Test fixtures.
 """
 #pylint: disable=possibly-unused-variable,redefined-outer-name
+import os
 import numpy as np
+import pandas as pd
 from pytest import fixture
 from sklearn.datasets import load_iris
 from sklearn.linear_model import LogisticRegression, LinearRegression
@@ -15,7 +17,7 @@ from sklearn.decomposition import PCA
 from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.svm import SVR, SVC
 from sklearn.preprocessing.data import Binarizer, MinMaxScaler, MaxAbsScaler, StandardScaler, Normalizer
-
+os.environ['KERAS_BACKEND'] = 'theano'
 
 @fixture('session')
 def iris():
@@ -34,6 +36,10 @@ def y_bin(y):
     y_bin = np.array(y)
     y_bin[y_bin == 2] = 0
     return y_bin
+
+@fixture('session')
+def y_ohe(y):
+    return pd.get_dummies(y)
         
 def make_models(X, y, y_bin):
     return dict(

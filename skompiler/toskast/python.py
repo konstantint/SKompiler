@@ -19,13 +19,10 @@ $b = (2 * $a);
 #pylint: disable=wildcard-import,unused-wildcard-import,unused-argument
 import ast
 from skompiler.ast import *
-
+from ._common import is_
 
 def translate(node):
     return PythonASTProcessor()(node)
-
-def _is(x):
-    return lambda self, node, **kw: x
 
 _funcmap = {
     'log': Log(),
@@ -116,9 +113,9 @@ class PythonASTProcessor:
     def List(self, lst, **kw):
         return MakeVector([self(el, **kw) for el in lst.elts])
     
-    Mult = _is(Mul())
-    Add = _is(Add())
-    Sub = _is(Sub())
-    USub = _is(USub())
-    LtE = _is(LtEq())
-    Div = _is(Div())
+    Mult = is_(Mul())
+    Add = is_(Add())
+    Sub = is_(Sub())
+    USub = is_(USub())
+    LtE = is_(LtEq())
+    Div = is_(Div())

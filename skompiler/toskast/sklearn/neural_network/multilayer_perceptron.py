@@ -1,8 +1,7 @@
 """
 Multilayer perceptron
 """
-from skompiler.ast import Definition, Let
-from skompiler.dsl import func, const, ref
+from skompiler.dsl import func, const
 from ..common import classifier
 
 _activations = {
@@ -16,13 +15,9 @@ _activations = {
 def mlp(model, inputs):
     actns = [model.activation]*(len(model.coefs_)-1) + [model.out_activation_]
     outs = inputs
-    code = []
-    for i, (M, b, a) in enumerate(zip(model.coefs_, model.intercepts_, actns)):
-        lname = 'z_{0}'.format(i+1)
-        z = _activations[a](const(M.T) @ outs + const(b))
-        code.append(Definition(lname, z))
-        outs = ref(lname)
-    return Let(code[:-1], code[-1].body)
+    for M, b, a in zip(model.coefs_, model.intercepts_, actns):
+        outs = _activations[a](const(M.T) @ outs + const(b))
+    return outs
 
 def mlp_classifier(model, inputs, method):
     out = mlp(model, inputs)

@@ -1,6 +1,7 @@
 """
 A set of convenience wrapper functions for AST creation.
 """
+#pylint: disable=protected-access
 import numpy as np
 from . import ast
 
@@ -38,8 +39,15 @@ def vector(elems):
 def ident(name, size=None):
     return ast.VectorIdentifier(name, size) if size else ast.Identifier(name)
 
-def ref(name):
-    return ast.Reference(name)
+def ref(name, to_obj=None):
+    if to_obj is not None:
+        try:
+            size = len(to_obj)
+        except ast.UnableToDecompose():
+            size = None
+        return ast.TypedReference(name, to_obj._dtype, size)
+    else:
+        return ast.Reference(name)
 
 def defn(**kw):
     for name, value in kw.items():

@@ -2,7 +2,6 @@
 A convenience interface to SKompiler's functionality.
 Wraps around the intricacies of the various toskast/fromskast pieces.
 """
-from .toskast.sklearn import translate as from_sklearn
 
 
 def skompile(*args, inputs=None):
@@ -74,7 +73,18 @@ def skompile(*args, inputs=None):
         model, method = _get_model_and_method(args[0])
     if not inputs:
         inputs = 'x'
-    return from_sklearn(model, inputs=inputs, method=method)
+    return _translate(model, inputs, method)
+
+def _translate(model, inputs, method):
+    if model.__class__.__module__.startswith('keras.'):
+        if method != 'predict':
+            raise ValueError("Only the 'predict' method is supported for Keras models")
+        # Import here, this way we do not force everyone to install everything
+        from .toskast.keras import translate as from_keras
+        return from_keras(model, inputs)
+    else:
+        from .toskast.sklearn import translate as from_sklearn
+        return from_sklearn(model, inputs=inputs, method=method)
 
 def _get_model_and_method(obj):
     if not hasattr(obj, '__call__'):

@@ -1,6 +1,7 @@
 """
 SKompiler: Generate Sympy expressions from SKAST.
 """
+#pylint: disable=protected-access
 import warnings
 from collections import OrderedDict
 from itertools import product, chain, takewhile, count
@@ -77,9 +78,6 @@ def _iif(cond, iftrue, iffalse):
         return iftrue
     else:
         return 'IF({0},{1},{2})'.format(cond, iftrue, iffalse)
-
-def _matvecproduct(M, x):
-    return [_sum('{0}*{1}'.format(m_i[j], x[j]) for j in range(len(x))) for m_i in M]
 
 def _dotproduct(xs, ys):
     return _sum('{0}*{1}'.format(x, y) for x, y in zip(xs, ys))
@@ -298,26 +296,26 @@ class ExcelWriter(ASTProcessor, StandardOps, VectorsAsLists):
     Abs = is_fmt('ABS({0})')
     Step = is_(_step)
     Sigmoid = is_fmt('(1/(1+EXP(-{0})))')
-    MatVecProduct = is_(_matvecproduct)
     DotProduct = is_(_dotproduct)
     VecSum = is_(_sum)
     VecMax = is_(_max)
-
-    def ArgMax(self, _):
-        return self._argmax
+    MatVecProduct = lambda self, _: self._matvecproduct
+    ArgMax = lambda self, _: self._argmax
+    Softmax = lambda self, _: self._softmax
 
     def _argmax(self, xs):
         xs = [self.possibly_add_named_subexpression(x) for x in xs]
         max_var = self.possibly_add_named_subexpression(_max(xs))
         return _argmax(xs, max_var)
 
+    def _matvecproduct(self, M, xs):
+        xs = [self.possibly_add_named_subexpression(x) for x in xs]
+        return [_sum('{0}*{1}'.format(m_i[j], xs[j]) for j in range(len(xs))) for m_i in M]
+    
     def _vecsumnormalize(self, xs):
         xs = [self.possibly_add_named_subexpression(x) for x in xs]
         sum_var = self.possibly_add_named_subexpression(_sum(xs))
         return ['({0}/{1})'.format(x, sum_var) for x in xs]
-
-    def Softmax(self, _):
-        return self._softmax
 
     def _softmax(self, xs):
         return self._vecsumnormalize(['EXP({0})'.format(x) for x in xs])
