@@ -8,13 +8,6 @@ License: MIT
 
 from setuptools import setup, find_packages
 
-extra_requires = []
-try:
-    from functools import singledispatch #pylint: disable=unused-import
-except ImportError:
-    # Python 3.3-
-    extra_requires.append("singledispatch")
-
 setup(name='SKompiler',
       version=[ln for ln in open("skompiler/__init__.py") if ln.startswith("__version__")][0].split("'")[1],
       description="Library for compiling trained SKLearn models into abstract expressions "
@@ -23,7 +16,10 @@ setup(name='SKompiler',
       long_description_content_type="text/markdown",
       classifiers=[ # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
           'Development Status :: 3 - Alpha',
-          'Programming Language :: Python :: 3',
+          'Programming Language :: Python :: 3.5',
+          'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
           'Topic :: Software Development :: Code Generators',
           'License :: OSI Approved :: MIT License',
           'Intended Audience :: Developers',
@@ -37,7 +33,7 @@ setup(name='SKompiler',
       packages=find_packages(exclude=["examples", "tests"]),
       include_package_data=True,
       zip_safe=True,
-      install_requires=["scikit-learn"] + extra_requires,
+      install_requires=["scikit-learn"],
       extras_require={
           "full": ["sympy", "sqlalchemy", "astor >= 0.6"],
           "test": ["sympy", "sqlalchemy", "astor >= 0.6", "pytest", "pandas", "keras", "theano"],

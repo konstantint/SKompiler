@@ -3,6 +3,11 @@ SKompiler: Translate trained SKLearn models to executable code in other language
 
 The package provides a tool for transforming trained SKLearn models into other forms, such as SQL queries, Excel formulas or Sympy expressions (which, in turn, can be translated to code in a variety of languages, such as C, Javascript, Rust, Julia, etc).
 
+Requirements
+------------
+
+ - Python 3.5 or later
+
 Installation
 ------------
 

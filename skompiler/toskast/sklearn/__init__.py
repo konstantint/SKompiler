@@ -2,11 +2,7 @@
 SKLearn model transformation to SKompiler's AST.
 """
 #pylint: disable=unused-argument
-try:
-    from functools import singledispatch
-except ImportError:
-    # Python 3.3-
-    from singledispatch import singledispatch
+from functools import singledispatch
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model.base import LinearModel
 from sklearn.svm import SVC, SVR
