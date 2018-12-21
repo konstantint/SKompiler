@@ -39,8 +39,9 @@ setup(name='SKompiler',
       zip_safe=True,
       install_requires=["scikit-learn"] + extra_requires,
       extras_require={
-          "dev": ["sympy", "sqlalchemy", "pylint", "pytest", "jupyter", "twine", "pandas",
-                  "keras", "theano"],
-          "full": ["sympy", "sqlalchemy", "astor >= 0.6"]
+          "full": ["sympy", "sqlalchemy", "astor >= 0.6"],
+          "test": ["sympy", "sqlalchemy", "astor >= 0.6", "pytest", "pandas", "keras", "theano"],
+          "dev": ["sympy", "sqlalchemy", "astor >= 0.6", "pytest", "pandas", "keras", "theano",
+                  "pylint", "jupyter", "twine"],
       }
      )
