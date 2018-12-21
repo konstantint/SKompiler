@@ -1,10 +1,5 @@
-Version 0.5.1
--------------
-
-    - Rudimentary support for Keras MLP models.
-
-Version 0.5
--------------
+Version 0.5-0.5.2
+-----------------
 
     - Changed skompile call signature
     - Fixed Excel code generation
@@ -14,6 +9,8 @@ Version 0.5
     - Nicer DSL for generating SKAST, basic symbolic processing and type checking
     - New algorithms: AdaBoostClassifier, KMeans, PCA, MLPClassifier, MLPRegressor,
       Normalizer, StandardScaler, MinMaxScaler, MaxAbsScaler, Binarizer
+    - (0.5.1) Rudimentary support for Keras MLP models.
+    - (0.5.2) Fixes issue #1
 
 Version 0.4
 -------------

@@ -67,6 +67,10 @@ class ASTNodeCreator(type):
             AST_NODES.add(name)
             return cls
 
+    # For Python 3.5, see https://stackoverflow.com/a/25191150/318964
+    def __init__(cls, name, bases, dct, **_):
+        super().__init__(name, bases, dct)
+
 
 _singletons = {}
 
