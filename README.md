@@ -106,7 +106,7 @@ By changing the first parameter of the `.to()` call you may produce output in a 
   
     _NB: The screencast was recorded using a previous version, where `multistage=False` was the default option_.
   * `sympy`: A SymPy expression. Ever wanted to take a derivative of your model symbolically?
-  * `sympy/<lang>`: Code in the language `<lang>`, generated via SymPy. Supported values for `<lang>` are `c`, `cxx`, `rust`, `fortran`, `js`, `r`, `julia`, `mathematica`, `octave`. Note that the quality of the generated code varies depending on the model, language and the value of the `assign_to` parameter. Again, this is just a convenience feature, you will get more control by dealing with `sympy` oode printers [manually](https://www.sympy.org/scipy-2017-codegen-tutorial/). 
+  * `sympy/<lang>`: Code in the language `<lang>`, generated via SymPy. Supported values for `<lang>` are `c`, `cxx`, `rust`, `fortran`, `js`, `r`, `julia`, `mathematica`, `octave`. Note that the quality of the generated code varies depending on the model, language and the value of the `assign_to` parameter. Again, this is just a convenience feature, you will get more control by dealing with `sympy` code printers [manually](https://www.sympy.org/scipy-2017-codegen-tutorial/). 
   
     _NB: Sympy translation does not support multistage mode at the moment, hence the resulting code will have repeated subexpressions (which can be extracted by means of Sympy itself, however)._
 
