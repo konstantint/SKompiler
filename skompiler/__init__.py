@@ -7,4 +7,4 @@ License: MIT
 '''
 from .api import skompile
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'

@@ -38,6 +38,6 @@ setup(name='SKompiler',
           "full": ["sympy", "sqlalchemy", "astor >= 0.6"],
           "test": ["sympy", "sqlalchemy", "astor >= 0.6", "pytest", "pandas", "keras", "theano"],
           "dev": ["sympy", "sqlalchemy", "astor >= 0.6", "pytest", "pandas", "keras", "theano",
-                  "pylint", "jupyter", "twine"],
+                  "pylint", "jupyter", "twine", "pyyaml"],
       }
      )

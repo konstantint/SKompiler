@@ -17,12 +17,17 @@ def classifier(probs, method):
         raise ValueError("Invalid method: {0}".format(method))
 
 def vecsumnormalize(node, vector_dim):
-    return let(defn(x=node),
-               defn(s=func.VecSum(ref('x'))),
-               ref('x') / repeat(ref('s'), vector_dim))
+    x = node
+    s = func.VecSum(ref('x', x))
+    return let(defn(x=x),
+               defn(s=s),
+               ref('x', x) / repeat(ref('s', s), vector_dim))
 
 def sklearn_softmax(node, vector_dim):
-    return let(defn(x=node),
-               defn(xmax=func.VecMax(ref('x'))),
-               defn(xfix=ref('x') - repeat(ref('xmax'), vector_dim)),
-               func.Softmax(ref('xfix')))
+    x = node
+    xmax = func.VecMax(ref('x', x))
+    xfix = ref('x', x) - repeat(ref('xmax', xmax), vector_dim)
+    return let(defn(x=x),
+               defn(xmax=xmax),
+               defn(xfix=xfix),
+               func.Softmax(ref('xfix', xfix)))

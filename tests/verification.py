@@ -4,7 +4,7 @@ Utility for basic testing of models.
 import warnings
 import numpy as np
 from sklearn.datasets import load_iris
-from .evaluators import PythonEval, SympyEval, SQLiteEval, ExcelEval
+from .evaluators import PythonEval, SympyEval, SQLiteEval, ExcelEval, PFAEval
 
 # Set up evaluators
 X, y = load_iris(True)
@@ -17,7 +17,8 @@ _evaluators = {
     'sympy2': SympyEval(X, true_argmax=True),
     'sqlite': SQLiteEval(X, False),
     'sqlite2': SQLiteEval(X, True),
-    'excel': ExcelEval(X)
+    'excel': ExcelEval(X),
+    'pfa': PFAEval(X),
 }
 
 def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, data_preprocessing=None):
@@ -41,8 +42,8 @@ def verify_one(model, method, evaluator, expr, binary_fix=False, inf_fix=False, 
 def verify(model, method, expr, binary_fix=False, inf_fix=False):
     with warnings.catch_warnings():
         if method == 'predict_log_proba': # Ignore divide by zeroes encountered in log(0)
-            print("Switch off warnings")
             warnings.simplefilter('ignore', RuntimeWarning)
+
         verify_one(model, method, 'excel', expr, binary_fix, inf_fix)
         verify_one(model, method, 'python', expr, binary_fix, inf_fix)
         verify_one(model, method, 'sympy', expr, binary_fix, inf_fix)
@@ -50,3 +51,15 @@ def verify(model, method, expr, binary_fix=False, inf_fix=False):
             verify_one(model, method, 'sympy2', expr, binary_fix, inf_fix)  # See that Sympy supports true_argmax correctly
         verify_one(model, method, 'sqlite', expr, binary_fix, inf_fix)
         verify_one(model, method, 'sqlite2', expr, binary_fix, inf_fix)
+
+        warnings.simplefilter('ignore', PendingDeprecationWarning) # Those two come from the PFA evaluator
+        warnings.simplefilter('ignore', DeprecationWarning)
+        try:
+            verify_one(model, method, 'pfa', expr, binary_fix, inf_fix)
+        except NameError as e:
+            if str(e) == "name 'inf' is not defined":
+                # This happens because I do not know how to properly encode inf/-inf in
+                # the PFA output. Ignore this so far.
+                pass
+            else:
+                raise

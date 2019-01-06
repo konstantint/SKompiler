@@ -212,14 +212,14 @@ class ExcelCode(OrderedDict):
 
         """
         import pandas as pd
-        return pd.DataFrame([['={v}'.format(v) for v in self.values()]],
+        return pd.DataFrame([['={0}'.format(v) for v in self.values()]],
                             columns=self.keys())
 
     def evaluate(self, **kwargs):
         """Evaluates the excel code using Python's eval.
         Will probably fail with MemoryError for longer strings
         (because Python's ast.parse can't handle them)."""
-        env = OrderedDict() 
+        env = OrderedDict()
         env.update(_builtins)
         for k, v in self.items():
             expand = _single_comparison.sub('==', v) # Excel uses '=' for comparisons

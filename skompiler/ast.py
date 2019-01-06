@@ -37,6 +37,7 @@ TRANSLATORS = {
     'python': 'skompiler.fromskast.python:translate',
     'sqlalchemy': 'skompiler.fromskast.sqlalchemy:translate',
     'sympy': 'skompiler.fromskast.sympy:translate',
+    'pfa': 'skompiler.fromskast.pfa:translate',
     'string': str
 }
 
@@ -272,6 +273,10 @@ class UnaryFunc(ASTNode, fields='op arg', repr='{op}({arg})'):
     def __len__(self):
         if isinstance(self.op, IsElemwise):
             return len(self.arg)
+        elif getattr(self.op, '_out_dtype', None) == DTYPE_SCALAR:
+            return 1
+        elif isinstance(self.op, Softmax):
+            return len(self.arg)
         else:
             raise UnableToDecompose()
     
@@ -410,18 +415,19 @@ class MakeVector(ASTNode, fields='elems', dtype=DTYPE_VECTOR):
 
 # Leaf nodes
 class IsAtom: pass
-class VectorIdentifier(ASTNode, IsAtom, fields='id size', repr='{id}', dtype=DTYPE_VECTOR):
+class IsInput: pass
+class VectorIdentifier(ASTNode, IsAtom, IsInput, fields='id size', repr='{id}', dtype=DTYPE_VECTOR):
     def __getitem__(self, index):
         return IndexedIdentifier(self.id, index, self.size)
     def __len__(self):
         return self.size
 
-class Identifier(ASTNode, IsAtom, fields='id', repr='{id}', dtype=DTYPE_SCALAR): pass
+class Identifier(ASTNode, IsAtom, IsInput, fields='id', repr='{id}', dtype=DTYPE_SCALAR): pass
 
 # Note that IndexedIdentifier is not a generic subscript operator. Its field must contain a string id and an integer index as well as the
 # total size of the vector being indexed.
 # This lets us "fake" vector input variables in contexts like SQL, where we interpret IndexedIdentifier("x", 1, 10) as a concatenated name "x1"
-class IndexedIdentifier(ASTNode, IsAtom, fields='id index size', repr='{id}[{index}]', dtype=DTYPE_SCALAR): pass
+class IndexedIdentifier(ASTNode, IsAtom, IsInput, fields='id index size', repr='{id}[{index}]', dtype=DTYPE_SCALAR): pass
 class NumberConstant(ASTNode, IsAtom, fields='value', repr='{value}', dtype=DTYPE_SCALAR): pass
 class VectorConstant(ASTNode, IsAtom, fields='value', repr='{value}', dtype=DTYPE_VECTOR):
     def __getitem__(self, index):
@@ -590,7 +596,7 @@ class LetCollector:
                 return node.body
         elif isinstance(node, Definition) and not entering:
             self.definitions.append(replace(node, name='{0}{1}'.format(self.scopes[-1], node.name)))
-        elif isinstance(node, Reference) and not entering:
+        elif (isinstance(node, Reference) or isinstance(node, TypedReference)) and not entering:
             if not self.scopes:
                 raise ValueError("Undefined reference: {0}".format(node.name))
             return replace(node, name='{0}{1}'.format(self.scopes[-1], node.name))

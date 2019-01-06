@@ -3,7 +3,7 @@ SKompiler: Translate trained SKLearn models to executable code in other language
 
 [![Build Status](https://travis-ci.org/konstantint/SKompiler.svg?branch=master)](https://travis-ci.org/konstantint/SKompiler)
 
-The package provides a tool for transforming trained SKLearn models into other forms, such as SQL queries, Excel formulas or Sympy expressions (which, in turn, can be translated to code in a variety of languages, such as C, Javascript, Rust, Julia, etc).
+The package provides a tool for transforming trained SKLearn models into other forms, such as SQL queries, Excel formulas, Portable Format for Analytics (PFA) files or Sympy expressions (which, in turn, can be translated to code in a variety of languages, such as C, Javascript, Rust, Julia, etc).
 
 Requirements
 ------------
@@ -112,6 +112,8 @@ By changing the first parameter of the `.to()` call you may produce output in a 
   * `excel`: Excel formula. Ever tried dragging a random forest equation down along the table? Fun! Check out [this short screencast](https://www.youtube.com/watch?v=7vUfa7W0NpY) to see how it can be done.
   
     _NB: The screencast was recorded using a previous version, where `multistage=False` was the default option_.
+  * `pfa`: A dict with [PFA](http://dmg.org/pfa/) code.
+  * `pfa/json` or `pfa/yaml`: PFA code as a JSON or YAML string for those who are lazy to write `json.dumps` or `yaml.dump`. PyYAML should be installed in the latter case, of course.
   * `sympy`: A SymPy expression. Ever wanted to take a derivative of your model symbolically?
   * `sympy/<lang>`: Code in the language `<lang>`, generated via SymPy. Supported values for `<lang>` are `c`, `cxx`, `rust`, `fortran`, `js`, `r`, `julia`, `mathematica`, `octave`. Note that the quality of the generated code varies depending on the model, language and the value of the `assign_to` parameter. Again, this is just a convenience feature, you will get more control by dealing with `sympy` code printers [manually](https://www.sympy.org/scipy-2017-codegen-tutorial/). 
   

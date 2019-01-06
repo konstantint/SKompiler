@@ -28,6 +28,7 @@ def normalizer(norm, inputs):
         norm = func.VecMax(inputs)
     else:
         raise ValueError("Unknown norm {0}".format(norm))
+    norm_fix = iif(ref('norm', norm) == const(0), const(1), ref('norm', norm))
     return let(defn(norm=norm),
-               defn(norm_fix=iif(norm == const(0), const(1), norm)),
-               inputs / vector([ref('norm_fix')]*len(inputs)))
+               defn(norm_fix=norm_fix),
+               inputs / vector([ref('norm_fix', norm_fix)]*len(inputs)))

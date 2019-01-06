@@ -6,5 +6,7 @@ python:
 # Two lines below needed for testing Py3.7: https://github.com/travis-ci/travis-ci/issues/9069#issuecomment-425720905
 sudo: required
 dist: xenial
-install: pip install .[test]
+install: 
+  - pip install .[test]
+  - pip install git+https://github.com/animator/python3-titus#egg=titus
 script: pytest

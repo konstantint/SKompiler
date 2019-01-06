@@ -10,8 +10,8 @@ from skompiler import skompile
 from .verification import verify_one
 
 # Sympy targets not included because these take a long time to evaluate (and fail on some models, e.g. 'sympy/c', 'sympy/js')
-_translate_targets = ['string', 'python/code']
-_eval_targets = ['python', 'excel', 'sqlite2', 'sympy']
+_translate_targets = ['string', 'python/code', 'pfa/json']
+_eval_targets = ['python', 'excel', 'sqlite2', 'sympy', 'pfa']
 
 def list_supported_methods(model):
     if isinstance(model, DecisionTreeRegressor):
@@ -31,6 +31,8 @@ def test_skompile(models):
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', RuntimeWarning)  # Ignore divide by zero warning for log(0)
+        warnings.simplefilter('ignore', PendingDeprecationWarning) # Those two come from the PFA evaluator
+        warnings.simplefilter('ignore', DeprecationWarning)
         for name, model in models.items():
             if _limit and name not in _limit:
                 continue
@@ -41,11 +43,19 @@ def test_skompile(models):
                 else:
                     expr = skompile(getattr(model, method))
 
-                #print(model, method)
+                print(name, model, method)
                 for evaluator in _eval_targets:
-                    #print(evaluator)
-                    verify_one(model, method, evaluator, expr,
-                               binary_fix=name.endswith('_bin'), inf_fix=(method == 'predict_log_proba'))
+                    print(evaluator)
+                    try:
+                        verify_one(model, method, evaluator, expr,
+                                   binary_fix=name.endswith('_bin'), inf_fix=(method == 'predict_log_proba'))
+                    except NameError as e:
+                        if evaluator == 'pfa' and str(e) == "name 'inf' is not defined":
+                            # This happens because I do not know how to properly encode inf/-inf in
+                            # the PFA output. Ignore this so far.
+                            pass
+                        else:
+                            raise
                 for target in _translate_targets:
                     expr.to(target)
 

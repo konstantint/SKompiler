@@ -5,9 +5,12 @@ from skompiler.dsl import const, func, let, defn, ref, vector
 
 
 def k_means(cluster_centers, inputs, method):
-    sq_dists = vector(let(defn(dx=inputs - const(c)),
-                          ref('dx') @ ref('dx'))
-                      for c in cluster_centers)
+    res = []
+    for c in cluster_centers:
+        dx = inputs - const(c)
+        res.append(let(defn(dx=dx), ref('dx', dx) @ ref('dx', dx)))
+    
+    sq_dists = vector(res)
     if method == 'transform':
         return func.Sqrt(sq_dists)
     elif method == 'predict':

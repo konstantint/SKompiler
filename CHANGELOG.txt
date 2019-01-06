@@ -1,4 +1,4 @@
-Version 0.5-0.5.3
+Version 0.5-0.5.4
 -----------------
 
     - Changed skompile call signature
@@ -12,6 +12,7 @@ Version 0.5-0.5.3
     - (0.5.1) Rudimentary support for Keras MLP models.
     - (0.5.2) Fixes issue #1
     - (0.5.3) Fixes for Python 3.5, removed dependency on staticdispatch.
+    - (0.5.4) Portable Format for Analytics (PFA) added as a target
 
 Version 0.4
 -------------

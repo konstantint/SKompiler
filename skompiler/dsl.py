@@ -43,7 +43,7 @@ def ref(name, to_obj=None):
     if to_obj is not None:
         try:
             size = len(to_obj)
-        except ast.UnableToDecompose():
+        except ast.UnableToDecompose:
             size = None
         return ast.TypedReference(name, to_obj._dtype, size)
     else:

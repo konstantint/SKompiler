@@ -81,3 +81,15 @@ class ExcelEval:
         if result.shape[-1] == 1:
             result = result[..., 0]
         return result
+
+class PFAEval:
+    def __init__(self, X):
+        self.X = X
+
+    def __call__(self, expr):
+        from titus.prettypfa import PFAEngine
+        engine, = PFAEngine.fromJson(expr.to('pfa/json'))
+        result = np.asarray([engine.action({'x': x}) for x in self.X])
+        if result.ndim > 1 and result.shape[-1] == 1:
+            result = result[..., 0]
+        return result
