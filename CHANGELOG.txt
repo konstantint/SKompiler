@@ -1,4 +1,4 @@
-Version 0.5-0.5.4
+Version 0.5-0.5.5
 -----------------
 
     - Changed skompile call signature
@@ -13,6 +13,7 @@ Version 0.5-0.5.4
     - (0.5.2) Fixes issue #1
     - (0.5.3) Fixes for Python 3.5, removed dependency on staticdispatch.
     - (0.5.4) Portable Format for Analytics (PFA) added as a target
+    - (0.5.5) Translation to SQLAlchemy supports CTE as from_obj
 
 Version 0.4
 -------------

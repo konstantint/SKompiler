@@ -234,6 +234,9 @@ class ASTNode(object, metaclass=ASTNodeCreator, fields=None):
                  'c', 'cxx', 'rust', 'fortran', 'js', 'r', 'julia',
                  'mathematica', 'octave'
                - 'excel'
+               - 'pfa'
+               - 'pfa/json'
+               - 'pfa/yaml'
                - 'python'
                - 'python/code'
                - 'python/lambda'

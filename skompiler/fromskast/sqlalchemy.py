@@ -158,7 +158,7 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
                 # This way we do not have to carry around an extra "key" field in our results all the time
                 from_obj.key_ = from_obj.columns[key_column]
             else:
-                if key_column not in from_obj:
+                if key_column not in from_obj.columns:
                     raise ValueError("The provided selectable does not contain the key column {0}".format(key_column))
                 from_obj.key_ = from_obj.columns[key_column]
         elif isinstance(from_obj, str):
