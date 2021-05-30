@@ -74,14 +74,20 @@ class PythonASTProcessor:
             return Identifier(name.id)
 
     def Subscript(self, sub, local_varnames=None):
-        if not isinstance(sub.slice, ast.Index) or not isinstance(sub.value, ast.Name) \
-           or not isinstance(sub.slice.value, ast.Num):
+        if not isinstance(sub.value, ast.Name):
             raise NotImplementedError("Unsupported form of subscript")
         if local_varnames and sub.value.id in local_varnames:
             raise ValueError("Subscripting named references is not supported")
-        return IndexedIdentifier(id=sub.value.id,
-                                 index=sub.slice.value.n,
-                                 size=None) # This makes Sympy sad
+        if isinstance(sub.slice, ast.Index) and isinstance(sub.slice.value, ast.Num):
+            return IndexedIdentifier(id=sub.value.id,
+                                    index=sub.slice.value.n,
+                                    size=None) # This makes Sympy sad
+        elif isinstance(sub.slice, ast.Constant):
+            return IndexedIdentifier(id=sub.value.id,
+                                    index=sub.slice.value,
+                                    size=None)
+        else:
+            raise NotImplementedError("Unsupported form of subscript")
 
     def Constant(self, const, **kw):
         # Starting from Py3.8 AST for constants is just Constant, rather than Num/Str/NameConstant
