@@ -83,6 +83,12 @@ class PythonASTProcessor:
                                  index=sub.slice.value.n,
                                  size=None) # This makes Sympy sad
 
+    def Constant(self, const, **kw):
+        # Starting from Py3.8 AST for constants is just Constant, rather than Num/Str/NameConstant
+        if type(const.value) not in [int, float]:
+            raise ValueError("Only numeric constants are supported")
+        return NumberConstant(const.value)
+
     def Num(self, num, **kw):
         return NumberConstant(num.n)
 

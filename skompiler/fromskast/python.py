@@ -30,6 +30,7 @@ writes the result value to the __result__ global. You may only exec this code:
 In general, use utils.evaluate to evaluate SKAST expressions.
 """
 import ast
+import sys
 import numpy as np
 from ..ast import USub, Identifier, NumberConstant, IsBoolean, merge_let_scopes, Max
 from ._common import ASTProcessor, StandardOps, denumpyfy
@@ -142,7 +143,8 @@ class PythonASTWriter(ASTProcessor, StandardOps):
         code.append(
             ast.Assign(targets=[ast.Name(id='__result__', ctx=ast.Store(), **_linearg)],
                        value=self(node.body), **_linearg))
-        return ast.Module(body=code)
+        return ast.Module(body=code,
+                          **({} if sys.version < '3.8' else {"type_ignores": []}))
 
     def Reference(self, ref):
         return ast.Name(id='_def_' + ref.name, ctx=ast.Load(), **_linearg)
