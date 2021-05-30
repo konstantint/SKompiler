@@ -8,5 +8,5 @@ sudo: required
 dist: xenial
 install: 
   - pip install .[test]
-  - pip install git+https://github.com/animator/python3-titus#egg=titus
+  - pip install titus2
 script: pytest
