@@ -4,14 +4,14 @@ SKLearn model transformation to SKompiler's AST.
 #pylint: disable=unused-argument
 from functools import singledispatch
 from sklearn.linear_model import LogisticRegression
-from sklearn.linear_model.base import LinearModel
+from sklearn.linear_model._base import LinearModel
 from sklearn.svm import SVC, SVR
-from sklearn.tree.tree import BaseDecisionTree, DecisionTreeRegressor
+from sklearn.tree._classes import BaseDecisionTree, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor,\
                              GradientBoostingClassifier, GradientBoostingRegressor,\
                              AdaBoostClassifier
 from sklearn.cluster import KMeans
-from sklearn.decomposition.pca import _BasePCA
+from sklearn.decomposition._pca import _BasePCA
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
 from sklearn.preprocessing import Binarizer, MinMaxScaler, MaxAbsScaler, StandardScaler,\

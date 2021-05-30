@@ -3,7 +3,7 @@ AdaBoost
 """
 import numpy as np
 from skompiler.dsl import const, func, sum_
-from ..common import classifier, vecsumnormalize
+from ..common import classifier, sklearn_softmax
 from ..tree.base import decision_tree
 
 # NB: AdaboostRegressor is annoying to implement as it requires
@@ -18,8 +18,7 @@ def adaboost_classifier(model, inputs, method="predict_proba"):
     if method == 'decision_function':
         divisor /= (model.n_classes_ - 1)
     tree_exprs = [decision_tree(e.tree_,
-                                method='predict_proba' if (model.algorithm == 'SAMME.R' or
-                                                           method.startswith('predict_')) else 'predict',
+                                method='predict_proba' if model.algorithm == 'SAMME.R' else 'predict',
                                 inputs=inputs,
                                 value_transform=adaboost_values(model, w/divisor, method))
                   for e, w in zip(model.estimators_, model.estimator_weights_)]
@@ -32,7 +31,7 @@ def adaboost_classifier(model, inputs, method="predict_proba"):
     elif method == 'predict':
         return func.ArgMax(decision)
     else:
-        return classifier(vecsumnormalize(func.Exp(sum_(tree_exprs)), model.n_classes_), method)
+        return classifier(sklearn_softmax(decision, model.n_classes_), method)
 
 
 def adaboost_values(m, weight=1.0, method='predict_proba'):
@@ -42,9 +41,6 @@ def adaboost_values(m, weight=1.0, method='predict_proba'):
         log_proba = np.log(proba)
         return (log_proba - (1. / m.n_classes_) * log_proba.sum(axis=1)[:, np.newaxis])*weight
     
-    def _ada_predict_proba(probs):
-        return probs * weight / (m.n_classes_ - 1)
-    
     def _ada_predict(preds):
         probs = np.zeros((len(preds), m.n_classes_))
         probs[np.arange(len(preds)), preds] = 1
@@ -53,7 +49,5 @@ def adaboost_values(m, weight=1.0, method='predict_proba'):
 
     if m.algorithm == 'SAMME.R':
         return _samme
-    elif method == 'predict' or method == 'decision_function':
-        return _ada_predict
     else:
-        return _ada_predict_proba
+        return _ada_predict

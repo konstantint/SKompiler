@@ -16,28 +16,28 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.svm import SVR, SVC
-from sklearn.preprocessing.data import Binarizer, MinMaxScaler, MaxAbsScaler, StandardScaler, Normalizer
-os.environ['KERAS_BACKEND'] = 'theano'
+from sklearn.preprocessing import Binarizer, MinMaxScaler, MaxAbsScaler, StandardScaler, Normalizer
 
-@fixture('session')
+
+@fixture(scope='session')
 def iris():
     return load_iris(return_X_y=True)
 
-@fixture('session')
+@fixture(scope='session')
 def X(iris):
     return iris[0]
 
-@fixture('session')
+@fixture(scope='session')
 def y(iris):
     return iris[1]
 
-@fixture('session')
+@fixture(scope='session')
 def y_bin(y):
     y_bin = np.array(y)
     y_bin[y_bin == 2] = 0
     return y_bin
 
-@fixture('session')
+@fixture(scope='session')
 def y_ohe(y):
     return pd.get_dummies(y)
         
@@ -81,6 +81,6 @@ def make_models(X, y, y_bin):
     )
 
 
-@fixture('session')
+@fixture(scope='session')
 def models(X, y, y_bin):
     return make_models(X, y, y_bin)

@@ -20,8 +20,9 @@ def gradient_boosting_classifier(model, inputs, method="decision_function"):
     tree_exprs = [vector([decision_tree(estimator.tree_, inputs, method="predict", value_transform=lambda v: v * model.learning_rate)
                           for estimator in iteration])
                   for iteration in model.estimators_]
-    return sum_(tree_exprs + [const(model.init_.priors)])
-
+    # Here we rely on the fact that DummyClassifier.predict() does not really read the input vectors.
+    # Consequently model.loss_.get_init_raw_predictions([<whatever>], model.<DummyClasifier>) kind-of-works.
+    return sum_(tree_exprs + [const(model.loss_.get_init_raw_predictions([[]], model.init_)[0])])
 
 def gradient_boosting_regressor(model, inputs, method="decision_function"):
     """
@@ -35,4 +36,5 @@ def gradient_boosting_regressor(model, inputs, method="decision_function"):
     
     tree_exprs = [decision_tree(iteration[0].tree_, inputs, method="predict", value_transform=lambda v: v * model.learning_rate)
                   for iteration in model.estimators_]
-    return sum_(tree_exprs + [const(model.init_.mean)])
+    # See remark above about the hack used here.
+    return sum_(tree_exprs + [const(model.loss_.get_init_raw_predictions([[]], model.init_)[0,0])])
