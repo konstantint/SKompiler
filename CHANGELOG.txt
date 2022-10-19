@@ -1,3 +1,9 @@
+Version 0.7
+-----------
+
+    - Fixed warnings from SKlearn 1.0 (PR#11, PR#14).
+    - The internal TreeWalker class now tolerates excess input variables. Also from PR#14.
+
 Version 0.6
 -----------
 
