@@ -24,7 +24,7 @@ def decision_tree(tree, inputs, method="predict", value_transform=None):
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.tree import DecisionTreeClassifier
     >>> from skompiler.dsl import ident, vector
-    >>> m = DecisionTreeClassifier(max_depth=2, random_state=1).fit(*load_iris(True))
+    >>> m = DecisionTreeClassifier(max_depth=2, random_state=1).fit(*load_iris(return_X_y=True))
     >>> print(decision_tree(m.tree_, ident('x', m.n_features_in_)))
     (if (x[3] <= 0.80...) then 0 else (if (x[3] <= 1.75) then 1 else 2))
 
@@ -60,7 +60,7 @@ class TreeWalker:
     >>> from sklearn.datasets import load_iris
     >>> from sklearn.tree import DecisionTreeRegressor
     >>> from skompiler.dsl import ident
-    >>> m =  DecisionTreeRegressor(max_depth=2, random_state=1).fit(*load_iris(True))
+    >>> m =  DecisionTreeRegressor(max_depth=2, random_state=1).fit(*load_iris(return_X_y=True))
     >>> tr = TreeWalker(m.tree_, ident('x', 4))
     >>> print(tr.walk())
     (if (x[3] <= 0.80...) then 0.0 else (if (x[3] <= 1.75) then 1.09... else 1.97...))

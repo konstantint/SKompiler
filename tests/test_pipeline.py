@@ -16,7 +16,7 @@ def test_random_pipeline():
                   ('cluster', KMeans(10)),
                   ('classify', MLPClassifier([5, 4], 'tanh'))])
 
-    X, y = load_breast_cancer(True)
+    X, y = load_breast_cancer(return_X_y=True)
     m.fit(X, y)
     
     expr = skompile(m, 'predict_proba')

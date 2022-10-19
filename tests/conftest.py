@@ -69,15 +69,15 @@ def make_models(X, y, y_bin):
         mlr3=MLPRegressor([2, 2, 2], 'identity').fit(X, y),
         mlc=MLPClassifier([2, 2], 'tanh').fit(X, y),
         mlc_bin=MLPClassifier([2, 2], 'identity').fit(X, y_bin),
-        bin=Binarizer(0.5),
+        bin=Binarizer(threshold=0.5),
         mms=MinMaxScaler().fit(X),
         mas=MaxAbsScaler().fit(X),
         ss1=StandardScaler().fit(X),
         ss2=StandardScaler(with_mean=False).fit(X),
         ss3=StandardScaler(with_std=False).fit(X),
-        n1=Normalizer('l1'),
-        n2=Normalizer('l2'),
-        n3=Normalizer('max')
+        n1=Normalizer(norm='l1'),
+        n2=Normalizer(norm='l2'),
+        n3=Normalizer(norm='max')
     )
 
 

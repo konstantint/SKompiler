@@ -33,7 +33,7 @@ Let us start by walking through an introductory example. We begin by training a 
 
     from sklearn.datasets import load_iris
     from sklearn.ensemble import RandomForestClassifier
-    X, y = load_iris(True)
+    X, y = load_iris(return_X_y=True)
     m = RandomForestClassifier(n_estimators=3, max_depth=3).fit(X, y)
 
 Suppose we need to express the logic of `m.predict` in SQLite. Here is how we can achieve that:

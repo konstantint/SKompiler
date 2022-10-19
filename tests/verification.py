@@ -7,7 +7,7 @@ from sklearn.datasets import load_iris
 from .evaluators import PythonEval, SympyEval, SQLiteEval, ExcelEval, PFAEval
 
 # Set up evaluators
-X, y = load_iris(True)
+X, y = load_iris(return_X_y=True)
 y_bin = np.array(y)
 y_bin[y_bin == 2] = 0
 
