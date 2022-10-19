@@ -112,27 +112,27 @@ def _(model, inputs, method):
 def _(model, inputs, method):
     if isinstance(model, DecisionTreeRegressor) and method != 'predict':
         raise ValueError("Method {0} is not supported for DecisionTreeRegressor".format(method))
-    return decision_tree(model.tree_, prepare_inputs(inputs, model.n_features_), method)
+    return decision_tree(model.tree_, prepare_inputs(inputs, model.n_features_in_), method)
 
 @register(RandomForestClassifier, ['predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return random_forest_classifier(model, prepare_inputs(inputs, model.n_features_), method)
+    return random_forest_classifier(model, prepare_inputs(inputs, model.n_features_in_), method)
 
 @register(RandomForestRegressor, ['predict'])
 def _(model, inputs, method):
-    return random_forest_regressor(model, prepare_inputs(inputs, model.n_features_))
+    return random_forest_regressor(model, prepare_inputs(inputs, model.n_features_in_))
 
 @register(GradientBoostingClassifier, ['decision_function'])
 def _(model, inputs, method):
-    return gradient_boosting_classifier(model, prepare_inputs(inputs, model.n_features_))
+    return gradient_boosting_classifier(model, prepare_inputs(inputs, model.n_features_in_))
 
 @register(GradientBoostingRegressor, ['predict'])
 def _(model, inputs, method):
-    return gradient_boosting_regressor(model, prepare_inputs(inputs, model.n_features_))
+    return gradient_boosting_regressor(model, prepare_inputs(inputs, model.n_features_in_))
 
 @register(AdaBoostClassifier, ['decision_function', 'predict', 'predict_proba', 'predict_log_proba'])
 def _(model, inputs, method):
-    return adaboost_classifier(model, prepare_inputs(inputs, model.estimators_[0].n_features_), method)
+    return adaboost_classifier(model, prepare_inputs(inputs, model.estimators_[0].n_features_in_), method)
 
 @register(KMeans, ['transform', 'predict'])
 def _(model, inputs, method):

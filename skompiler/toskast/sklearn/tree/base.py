@@ -25,7 +25,7 @@ def decision_tree(tree, inputs, method="predict", value_transform=None):
     >>> from sklearn.tree import DecisionTreeClassifier
     >>> from skompiler.dsl import ident, vector
     >>> m = DecisionTreeClassifier(max_depth=2, random_state=1).fit(*load_iris(True))
-    >>> print(decision_tree(m.tree_, ident('x', m.n_features_)))
+    >>> print(decision_tree(m.tree_, ident('x', m.n_features_in_)))
     (if (x[3] <= 0.80...) then 0 else (if (x[3] <= 1.75) then 1 else 2))
 
     >>> inputs = vector(map(ident, 'abcd'))
@@ -80,8 +80,8 @@ class TreeWalker:
         
         self.tree = tree
         self.features = features
-        if tree.n_features != len(features):
-            raise ValueError("Incorrect number of features provided")
+        if len(self.features) < tree.n_features:
+            raise ValueError(f"Incorrect number of features provided. Expect {tree.n_features} but have {self.features}")
         if node_values is None:
             self.values = tree.value[:, 0]
             if self.values.shape[1] == 1:
@@ -102,7 +102,7 @@ class TreeWalker:
                 return const(self.values[node_id])
         else:
             ft = self.tree.feature[node_id]
-            if ft < 0 or ft >= self.tree.n_features:
+            if ft < 0 or ft >= len(self.features):
                 raise ValueError("Invalid feature value for node {0}".format(node_id))
             return iif(self.features[ft] <= const(self.tree.threshold[node_id].item()),
                        self.walk(self.tree.children_left[node_id]),
