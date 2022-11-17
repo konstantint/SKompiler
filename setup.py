@@ -8,7 +8,7 @@ License: MIT
 
 from setuptools import setup, find_packages
 
-setup(name='SKompiler',
+setup(name='Organon-SKompiler',
       version=[ln for ln in open("skompiler/__init__.py") if ln.startswith("__version__")][0].split("'")[1],
       description="Library for compiling trained SKLearn models into abstract expressions "
                   "suitable for further compilation into executable code in various languages.",
