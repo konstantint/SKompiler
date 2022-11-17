@@ -114,7 +114,6 @@ def _try_get_key_columns_in_from_obj(from_obj, result_from_obj, key_columns):
             key_col_name = _get_key_col_name(i)
             id_col_names.append(key_col_name)
             actual_col_names_map[key_col_name] = col
-        is_actual_name = True
     try:
         added_col_names = set()
         cols = []
