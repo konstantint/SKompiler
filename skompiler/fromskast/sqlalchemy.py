@@ -6,13 +6,14 @@ from functools import reduce
 
 import numpy as np
 import sqlalchemy as sa
+from sqlalchemy import and_
 from sqlalchemy.sql.selectable import Join, FromGrouping
 
 from ._common import ASTProcessor, StandardOps, StandardArithmetics, is_, tolist, \
     not_implemented, prepare_assign_to, id_generator, denumpyfy
 from ..ast import ArgMax, VecMax, Softmax, IsElemwise, VecSum, Max, IsAtom
 
-DEFAULT_KEY_LABEL = "__id__"
+DEFAULT_KEY_LABEL_PREFIX = "__id__"
 
 
 # pylint: disable=trailing-whitespace
@@ -76,7 +77,8 @@ def translate(node, dialect=None, assign_to='y', component=None,
     """
     if multistage and from_obj is None:
         raise ValueError("from_obj must be specified in multistage mode")
-    result = SQLAlchemyWriter(from_obj=from_obj, key_column=key_column, multistage=multistage)(node)
+    key_column = [key_column] if not isinstance(key_column, list) else key_column
+    result = SQLAlchemyWriter(from_obj=from_obj, key_columns=key_column, multistage=multistage)(node)
 
     if component is not None:
         result = result._replace(cols=[result.cols[component]])
@@ -86,9 +88,9 @@ def translate(node, dialect=None, assign_to='y', component=None,
         result = result._replace(cols=[col.label(lbl) for col, lbl in zip(result.cols, assign_to)])
 
     if include_key_col_in_query:
-        id_col = _try_get_key_column_in_from_obj(from_obj, result.from_obj, key_column)
-        if id_col is not None:
-            result.cols.append(id_col)
+        id_cols = _try_get_key_columns_in_from_obj(from_obj, result.from_obj, key_column)
+        if id_cols:
+            result.cols.extend(id_cols)
         else:
             raise NotImplementedError("Key column cannot be added to sql expression for this node")
     result = sa.select(result.cols, from_obj=result.from_obj)
@@ -97,17 +99,36 @@ def translate(node, dialect=None, assign_to='y', component=None,
         result = to_sql(result, dialect)
     return result
 
+def _get_key_col_name(index, prefix=None):
+    prefix = prefix if prefix is not None else DEFAULT_KEY_LABEL_PREFIX
+    return f"{prefix}{index}"
 
-def _try_get_key_column_in_from_obj(from_obj, result_from_obj, key_column):
-    id_col_name = DEFAULT_KEY_LABEL
+def _try_get_key_columns_in_from_obj(from_obj, result_from_obj, key_columns):
+    actual_col_names_map = None
     if isinstance(result_from_obj, TableClause) and result_from_obj.name == from_obj:
-        id_col_name = key_column
+        id_col_names = key_columns.copy()
+    else:
+        actual_col_names_map = {}
+        id_col_names = []
+        for i, col in enumerate(key_columns):
+            key_col_name = _get_key_col_name(i)
+            id_col_names.append(key_col_name)
+            actual_col_names_map[key_col_name] = col
+        is_actual_name = True
     try:
+        added_col_names = set()
+        cols = []
         for col in result_from_obj.columns:
-            if col.name == id_col_name:
-                if id_col_name == DEFAULT_KEY_LABEL:
-                    return col.label(key_column)
-                return col
+            # in clauses like 'join' a key column might exist in multiple tables
+            # "not in added_col_names" prevents multiple addition in this case.
+            if col.name in id_col_names and col.name not in added_col_names:
+                if actual_col_names_map:
+                    cols.append(col.label(actual_col_names_map[col.name]))
+                else:
+                    cols.append(col)
+                added_col_names.add(col.name)
+        if cols:
+            return cols
     except:
         pass
     return None
@@ -168,9 +189,16 @@ def _merge(tbl1, tbl2):
     tbl1 = all_tables[0]
     joined = tbl1
     for tbl_next in all_tables[1:]:
-        joined = joined.join(tbl_next, onclause=tbl1.key_ == tbl_next.key_)
-        joined.key_ = tbl1.key_
+        joined = joined.join(tbl_next, onclause=_get_onclause(tbl1, tbl_next))
+        joined.keys_ = tbl1.keys_
     return joined
+
+
+def _get_onclause(tbl_1, tbl_2):
+    if len(tbl_1.keys_) > 1:
+        return and_(*[tbl_1_key==tbl_2_key for tbl_1_key, tbl_2_key in zip(tbl_1.keys_, tbl_2.keys_)])
+    key_col = tbl_1.keys_[0].name
+    return tbl_1.columns[key_col] == tbl_2.columns[key_col]
 
 
 Result = namedtuple('Result', 'cols from_obj')
@@ -181,7 +209,7 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
        The interpretation of each node is a tuple, containing a list of column expressions and a from_obj,
        where these columns must be queried from."""
 
-    def __init__(self, from_obj='data', key_column='id',
+    def __init__(self, from_obj='data', key_columns=['id'],
                  positive_infinity=float(np.finfo('float64').max),
                  negative_infinity=float(np.finfo('float64').min),
                  multistage=True):
@@ -189,14 +217,16 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
         self.negative_infinity = negative_infinity
         if multistage:
             if isinstance(from_obj, str):
-                from_obj = sa.table(from_obj, sa.column(key_column))
+                from_obj = sa.table(from_obj, *[sa.column(key_column) for key_column in key_columns])
                 # This is a bit hackish, but quite convenient.
                 # This way we do not have to carry around an extra "key" field in our results all the time
-                from_obj.key_ = from_obj.columns[key_column]
+                from_obj.keys_ = [from_obj.columns[key_column] for key_column in key_columns]
             else:
-                if key_column not in from_obj.columns:
-                    raise ValueError("The provided selectable does not contain the key column {0}".format(key_column))
-                from_obj.key_ = from_obj.columns[key_column]
+                for key_column in key_columns:
+                    if key_column not in from_obj.columns:
+                        raise ValueError(
+                            "The provided selectable does not contain the key column {0}".format(key_column))
+                from_obj.keys_ = [from_obj.columns[key_column] for key_column in key_columns]
         elif isinstance(from_obj, str):
             from_obj = sa.table(from_obj)
         self.from_obj = from_obj
@@ -281,8 +311,8 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
         tbls = list(tbls)
         target_table = tbls[0]
         for tbl in tbls[1:]:
-            new_joined = target_table.join(tbl, onclause=target_table.key_ == tbl.key_)
-            new_joined.key_ = target_table.key_
+            new_joined = target_table.join(tbl, onclause=_get_onclause(target_table, tbl))
+            new_joined.keys_ = target_table.keys_
             target_table = new_joined
         return Result(result, target_table)
 
@@ -319,15 +349,17 @@ class SQLAlchemyWriter(ASTProcessor, StandardOps, StandardArithmetics):
             raise ValueError("Undefined reference: {0}".format(node.name))
         return self.references[-1][node.name]
 
-    def _make_cte(self, result, col_names=None, key_label=DEFAULT_KEY_LABEL):
+    def _make_cte(self, result, col_names=None, key_label_prefix=DEFAULT_KEY_LABEL_PREFIX):
         if not self.multistage:
             return result
         if col_names is None:
             col_names = ['f{0}'.format(i + 1) for i in range(len(result.cols))]
         labeled_cols = [c.label(n) for c, n in zip(result.cols, col_names)]
-        new_tbl = sa.select([result.from_obj.key_.label(key_label)] + labeled_cols, from_obj=result.from_obj).cte(
+        key_col_labels = [_get_key_col_name(i, key_label_prefix) for i in range(len(result.from_obj.keys_))]
+        labeled_key_cols = [key_col.label(label) for label, key_col in zip(key_col_labels, result.from_obj.keys_)]
+        new_tbl = sa.select(labeled_key_cols + labeled_cols, from_obj=result.from_obj).cte(
             next(self.temp_ids))
-        new_tbl.key_ = new_tbl.columns[key_label]
+        new_tbl.keys_ = [new_tbl.columns[label] for label in key_col_labels]
         new_cols = [new_tbl.columns[n] for n in col_names]
         return Result(new_cols, new_tbl)
 
