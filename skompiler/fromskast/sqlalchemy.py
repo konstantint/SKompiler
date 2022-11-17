@@ -424,7 +424,7 @@ import sqlalchemy.dialects
 
 
 # pylint: disable=wildcard-import,unused-wildcard-import
-from sqlalchemy.dialects import *
+from sqlalchemy.dialects import *    # Must do it in order to getattr(sqlalchemy.dialects, ...)
 def to_sql(sa_expr, dialect_name='sqlite'):
     """
     Helper function. Given a SQLAlchemy expression, returns the corresponding
